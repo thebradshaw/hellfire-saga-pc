@@ -15,6 +15,8 @@ typedef struct
   int  vsync;
   int  scale_mode;   /* ScaleMode */
   int  volume;       /* 0..100 */
+  int  fps120;       /* 1 = present at 120 Hz (each game frame shown twice) */
+  int  invincible;   /* 1 = nothing hurts you; pits still kill */
 } Settings;
 
 extern Settings settings;

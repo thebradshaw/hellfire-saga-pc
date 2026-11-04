@@ -24,7 +24,8 @@ typedef enum
   PAUSE_NONE = 0,
   PAUSE_RESUME,
   PAUSE_RESET,
-  PAUSE_EXIT
+  PAUSE_EXIT,
+  PAUSE_INVINCIBLE       /* the invincibility toggle changed */
 } PauseResult;
 
 void launcher_init(const char *base_path);

@@ -209,6 +209,16 @@ uint8_t emu_read_ram8(uint32_t address)
   return READ_BYTE(work_ram, address & 0xFFFF);
 }
 
+uint16_t emu_read_ram16(uint32_t address)
+{
+  return (uint16_t)((emu_read_ram8(address) << 8) | emu_read_ram8(address + 1));
+}
+
+void emu_write_ram8(uint32_t address, uint8_t value)
+{
+  WRITE_BYTE(work_ram, address & 0xFFFF, value);
+}
+
 /* ROM bytes are stored byte-swapped in 16-bit pairs on little-endian hosts,
    so byte address A lives at cart.rom[A ^ 1]. */
 uint8_t emu_rom_read8(uint32_t address)

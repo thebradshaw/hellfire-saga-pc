@@ -52,6 +52,8 @@ double emu_fps(void);
 /* Direct read of 68000 work RAM (0xFF0000-0xFFFFFF), for watching game
    state such as "is a boss fight active". */
 uint8_t emu_read_ram8(uint32_t address);
+uint16_t emu_read_ram16(uint32_t address);   /* big-endian word */
+void    emu_write_ram8(uint32_t address, uint8_t value);
 
 /* Read/patch the loaded copy of the ROM in memory (the file is untouched). */
 uint8_t emu_rom_read8(uint32_t address);

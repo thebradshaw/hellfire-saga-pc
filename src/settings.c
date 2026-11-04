@@ -28,6 +28,8 @@ static void defaults(void)
   settings.vsync      = 1;
   settings.scale_mode = SCALE_INTEGER;
   settings.volume     = 100;
+  settings.fps120     = 0;
+  settings.invincible = 0;
 }
 
 void settings_load(void)
@@ -54,6 +56,8 @@ void settings_load(void)
     else if (!strcmp(line, "fullscreen")) settings.fullscreen = atoi(val) != 0;
     else if (!strcmp(line, "vsync"))      settings.vsync      = atoi(val) != 0;
     else if (!strcmp(line, "scale_mode")) settings.scale_mode = atoi(val) ? SCALE_FIT : SCALE_INTEGER;
+    else if (!strcmp(line, "fps120"))     settings.fps120     = atoi(val) != 0;
+    else if (!strcmp(line, "invincible")) settings.invincible = atoi(val) != 0;
     else if (!strcmp(line, "volume"))     settings.volume     = SDL_clamp(atoi(val), 0, 100);
   }
   fclose(f);
@@ -73,5 +77,7 @@ void settings_save(void)
   fprintf(f, "vsync=%d\n",      settings.vsync);
   fprintf(f, "scale_mode=%d\n", settings.scale_mode);
   fprintf(f, "volume=%d\n",     settings.volume);
+  fprintf(f, "fps120=%d\n",     settings.fps120);
+  fprintf(f, "invincible=%d\n", settings.invincible);
   fclose(f);
 }

@@ -101,11 +101,11 @@ void launcher_offer_rom(const char *path)
 static const char *main_items[] = { "Play", "Soundtrack", "Options", "Credits", "Quit" };
 #define MAIN_COUNT 5
 
-#define OPT_COUNT 6
+#define OPT_COUNT 8
 
 static const char *option_label(int i)
 {
-  static const char *labels[] = { "Screen", "Display", "Scaling", "Vsync", "Volume", "Back" };
+  static const char *labels[] = { "Screen", "Display", "Scaling", "Frame rate", "VSync", "Invincible", "Volume", "Back" };
   return labels[i];
 }
 
@@ -116,8 +116,10 @@ static void option_value(int i, char *buf, size_t n)
     case 0: snprintf(buf, n, "%s", settings.widescreen ? "Wide 400x224" : "Original 320x224"); break;
     case 1: snprintf(buf, n, "%s", settings.fullscreen ? "Fullscreen" : "Window"); break;
     case 2: snprintf(buf, n, "%s", settings.scale_mode == SCALE_INTEGER ? "Pixel perfect" : "Fill screen"); break;
-    case 3: snprintf(buf, n, "%s", settings.vsync ? "On" : "Off"); break;
-    case 4: snprintf(buf, n, "%d%%", settings.volume); break;
+    case 3: snprintf(buf, n, "%s", settings.fps120 ? "120 FPS" : "60 FPS"); break;
+    case 4: snprintf(buf, n, "%s", settings.vsync ? "On" : "Off"); break;
+    case 5: snprintf(buf, n, "%s", settings.invincible ? "On (only pits can kill you)" : "Off"); break;
+    case 6: snprintf(buf, n, "%d%%", settings.volume); break;
     default: buf[0] = 0; break;
   }
 }
@@ -129,8 +131,10 @@ static LauncherResult change_option(int i, int dir)
     case 0: settings.widescreen = !settings.widescreen; break;
     case 1: settings.fullscreen = !settings.fullscreen; settings_save(); return LAUNCH_VIDEO_CHANGED;
     case 2: settings.scale_mode = !settings.scale_mode; break;
-    case 3: settings.vsync = !settings.vsync; settings_save(); return LAUNCH_VIDEO_CHANGED;
-    case 4:
+    case 3: settings.fps120 = !settings.fps120; break;
+    case 4: settings.vsync = !settings.vsync; settings_save(); return LAUNCH_VIDEO_CHANGED;
+    case 5: settings.invincible = !settings.invincible; break;
+    case 6:
       settings.volume += dir * 10;
       if (settings.volume < 0)   settings.volume = 0;
       if (settings.volume > 100) settings.volume = 100;
@@ -308,9 +312,9 @@ static void draw_options(Canvas *c)
   draw_heading(c, CONTENT_Y, "Options");
   for (i = 0; i < OPT_COUNT; i++)
   {
-    int y = CONTENT_Y + f_title.line_h + 10 + i * 30;
+    int y = CONTENT_Y + f_title.line_h + 6 + i * 25;
     uint32_t col = i == cursor ? COL_ACCENT : COL_TEXT;
-    if (i == cursor) draw_selection(c, y, 28, 380);
+    if (i == cursor) draw_selection(c, y, 25, 420);
     option_value(i, value, sizeof(value));
     if (value[0])
     {
@@ -370,20 +374,27 @@ void launcher_draw(Canvas *c, unsigned ticks)
 
 /* ---- pause menu ----------------------------------------------------------- */
 
-static const char *pause_items[] = { "Resume", "Reset Game", "Back to Launcher" };
+#define PAUSE_COUNT 4
+static const char *pause_items[PAUSE_COUNT] = { "Resume", "Invincible", "Reset Game", "Back to Launcher" };
 static int pause_cursor;
 
 void pause_open(void) { pause_cursor = 0; }
 
 PauseResult pause_event(MenuAction a)
 {
-  if (a == MENU_UP)   pause_cursor = (pause_cursor + 2) % 3;
-  if (a == MENU_DOWN) pause_cursor = (pause_cursor + 1) % 3;
+  if (a == MENU_UP)   pause_cursor = (pause_cursor + PAUSE_COUNT - 1) % PAUSE_COUNT;
+  if (a == MENU_DOWN) pause_cursor = (pause_cursor + 1) % PAUSE_COUNT;
+  if (pause_cursor == 1 && (a == MENU_LEFT || a == MENU_RIGHT || a == MENU_OK))
+  {
+    settings.invincible = !settings.invincible;
+    settings_save();
+    return PAUSE_INVINCIBLE;
+  }
   if (a == MENU_PAUSE || a == MENU_BACK) return PAUSE_RESUME;
   if (a == MENU_OK)
   {
     if (pause_cursor == 0) return PAUSE_RESUME;
-    if (pause_cursor == 1) return PAUSE_RESET;
+    if (pause_cursor == 2) return PAUSE_RESET;
     return PAUSE_EXIT;
   }
   return PAUSE_NONE;
@@ -392,14 +403,17 @@ PauseResult pause_event(MenuAction a)
 void pause_draw(Canvas *c)
 {
   int i, row = f_body.atlas.px ? f_body.line_h + 2 : 16;
-  int top = c->h / 2 - row / 2;
+  int top = c->h / 2 - row;
   gfx_fill(c, 0, 0, c->w, c->h, RGBA(10, 0, 4, 170));
   gfx_font_centered(c, &f_title, c->w / 2, top - (f_title.atlas.px ? f_title.line_h : 16) - 4, "Paused", COL_ACCENT);
-  for (i = 0; i < 3; i++)
+  for (i = 0; i < PAUSE_COUNT; i++)
   {
     int y = top + i * row;
+    char label[48];
     uint32_t col = i == pause_cursor ? COL_ACCENT : COL_TEXT;
-    if (i == pause_cursor) gfx_fill(c, c->w / 2 - 90, y, 180, row, RGBA(255, 120, 30, 60));
-    gfx_font_centered(c, &f_body, c->w / 2, y + 1, pause_items[i], col);
+    if (i == 1) snprintf(label, sizeof(label), "Invincible: %s", settings.invincible ? "On" : "Off");
+    else        snprintf(label, sizeof(label), "%s", pause_items[i]);
+    if (i == pause_cursor) gfx_fill(c, c->w / 2 - 100, y, 200, row, RGBA(255, 120, 30, 60));
+    gfx_font_centered(c, &f_body, c->w / 2, y + 1, label, col);
   }
 }
