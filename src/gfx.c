@@ -222,3 +222,139 @@ void image_free(Image *img)
   free(img->px);
   memset(img, 0, sizeof(*img));
 }
+
+/* ---- baked gothic fonts ------------------------------------------------- */
+
+#include <stdio.h>
+#include "hf_file.h"
+
+int font_load(Font *f, const char *path_no_ext)
+{
+  char path[1200], line[128];
+  FILE *fp;
+  int code, v[7];
+
+  memset(f, 0, sizeof(*f));
+  snprintf(path, sizeof(path), "%s.txt", path_no_ext);
+  fp = hf_fopen(path, "r");
+  if (!fp) return 0;
+  if (!fgets(line, sizeof(line), fp) || sscanf(line, "font %d %d", &f->line_h, &f->ascent) != 2)
+  { fclose(fp); return 0; }
+  while (fgets(line, sizeof(line), fp))
+  {
+    if (sscanf(line, "%d %d %d %d %d %d %d %d", &code, &v[0], &v[1], &v[2], &v[3], &v[4], &v[5], &v[6]) != 8)
+      continue;
+    if (code < 32 || code > 126) continue;
+    {
+      Glyph *g = &f->g[code - 32];
+      g->x = (short)v[0]; g->y = (short)v[1]; g->w = (short)v[2]; g->h = (short)v[3];
+      g->xoff = (short)v[4]; g->yoff = (short)v[5]; g->adv = (short)v[6];
+    }
+  }
+  fclose(fp);
+
+  snprintf(path, sizeof(path), "%s.png", path_no_ext);
+  if (!image_load(&f->atlas, path)) { memset(f, 0, sizeof(*f)); return 0; }
+  return 1;
+}
+
+void font_free(Font *f)
+{
+  image_free(&f->atlas);
+  memset(f, 0, sizeof(*f));
+}
+
+static const Glyph *glyph(const Font *f, unsigned char ch)
+{
+  if (ch < 32 || ch > 126) ch = '?';
+  return &f->g[ch - 32];
+}
+
+int gfx_font_width(const Font *f, const char *s)
+{
+  int w = 0;
+  if (!f->atlas.px) return gfx_text_width(s, 1);
+  for (; *s; s++) w += glyph(f, (unsigned char)*s)->adv;
+  return w;
+}
+
+static void font_pass(Canvas *c, const Font *f, int x, int y, const char *s, uint32_t color)
+{
+  uint32_t rgb = color & 0xFFFFFF, ca = color >> 24;
+  for (; *s; s++)
+  {
+    const Glyph *g = glyph(f, (unsigned char)*s);
+    int gx, gy;
+    for (gy = 0; gy < g->h; gy++)
+    {
+      int py = y + g->yoff + gy;
+      const uint32_t *src;
+      uint32_t *dst;
+      if (py < 0 || py >= c->h) continue;
+      src = f->atlas.px + (size_t)(g->y + gy) * f->atlas.w + g->x;
+      dst = c->px + (size_t)py * c->pitch;
+      for (gx = 0; gx < g->w; gx++)
+      {
+        int px = x + g->xoff + gx;
+        uint32_t a = (src[gx] >> 24) * ca / 255;
+        if (a && px >= 0 && px < c->w)
+          dst[px] = blend(dst[px], (a << 24) | rgb);
+      }
+    }
+    x += g->adv;
+  }
+}
+
+void gfx_font_text(Canvas *c, const Font *f, int x, int y, const char *s, uint32_t color)
+{
+  int d;
+  if (!f->atlas.px) { gfx_text_shadow(c, x, y, s, 1, color); return; }
+  d = f->line_h >= 30 ? 2 : 1;
+  font_pass(c, f, x + d, y + d, s, RGBA(8, 0, 2, 200));
+  font_pass(c, f, x, y, s, color);
+}
+
+void gfx_font_centered(Canvas *c, const Font *f, int cx, int y, const char *s, uint32_t color)
+{
+  gfx_font_text(c, f, cx - gfx_font_width(f, s) / 2, y, s, color);
+}
+
+void gfx_font_right(Canvas *c, const Font *f, int right_x, int y, const char *s, uint32_t color)
+{
+  gfx_font_text(c, f, right_x - gfx_font_width(f, s), y, s, color);
+}
+
+int gfx_font_wrapped(Canvas *c, const Font *f, int cx, int y, int max_w, const char *s, uint32_t color)
+{
+  int line_h = f->atlas.px ? f->line_h : 10;
+  char line[256];
+  while (*s)
+  {
+    /* Take whole words while they fit. */
+    int len = 0, best = 0;
+    const char *p = s;
+    while (*p == ' ') p++;
+    s = p;
+    for (;;)
+    {
+      const char *q = s + len;
+      int end;
+      while (*q == ' ') q++;
+      while (*q && *q != ' ') q++;
+      end = (int)(q - s);
+      if (end >= (int)sizeof(line)) break;
+      memcpy(line, s, (size_t)end);
+      line[end] = 0;
+      if (best && gfx_font_width(f, line) > max_w) break;
+      best = len = end;
+      if (!*q) break;
+    }
+    memcpy(line, s, (size_t)best);
+    line[best] = 0;
+    gfx_font_centered(c, f, cx, y, line, color);
+    y += line_h;
+    s += best;
+    if (!best) break;
+  }
+  return y;
+}

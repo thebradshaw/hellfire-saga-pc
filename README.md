@@ -66,7 +66,7 @@ GitHub Actions builds both on every pull request. Download them from the run's *
 ```
 src/main.c        main loop, frame pacing (vsync lockstep on 60 Hz screens)
 src/launcher.c    ROM setup, menus, options, credits, pause menu
-src/gfx.c         tiny software renderer: rectangles, 8x8 font, images
+src/gfx.c         tiny software renderer: rectangles, baked gothic fonts, images
 src/video.c       one SDL texture, pixel-perfect or fit scaling
 src/audio.c       short SDL audio queue with drift correction (low latency)
 src/controls.c    keyboard + SDL game controllers
@@ -97,5 +97,8 @@ third_party/gpgx-wide   Genesis Plus GX Wide: 68000, Z80, VDP, YM2612, PSG in C
 - [Genesis Plus GX](https://github.com/ekeeke/Genesis-Plus-GX) by Eke-Eke and Charles MacDonald, and its
   [widescreen fork](https://github.com/libretro/Genesis-Plus-GX-Wide). Their non-commercial license
   (`third_party/gpgx-wide/LICENSE.txt`) means builds of this project may not be sold.
+- Fonts: [UnifrakturCook](https://fonts.google.com/specimen/UnifrakturCook) by j. 'mach' wust and Peter Wiegel, and
+  [Grenze Gotisch](https://github.com/Omnibus-Type/Grenze-Gotisch) by Omnibus-Type (both SIL Open Font License,
+  see `assets/fonts/`). Baked to images with `tools/bake_font.py`.
 - [font8x8](https://github.com/dhepper/font8x8) by Daniel Hepper (public domain)
 - [stb_image](https://github.com/nothings/stb) by Sean Barrett (public domain / MIT)

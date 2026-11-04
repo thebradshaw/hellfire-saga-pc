@@ -38,6 +38,29 @@ void gfx_text_centered(Canvas *c, int cx, int y, const char *s, int scale, uint3
 /* Word-wraps to max_w pixels. Returns the y just below the last line. */
 int  gfx_text_wrapped(Canvas *c, int x, int y, int max_w, const char *s, int scale, uint32_t color);
 
+/* Gothic text: fonts baked offline by tools/bake_font.py into a glyph atlas
+   (white, alpha = coverage) plus a metrics file. Covers ASCII 32-126. */
+typedef struct { short x, y, w, h, xoff, yoff, adv; } Glyph;
+typedef struct
+{
+  Image atlas;
+  int   line_h, ascent;
+  Glyph g[95];
+} Font;
+
+/* Loads <path_no_ext>.png and .txt. On failure the font falls back to
+   font8x8, so text still shows. */
+int  font_load(Font *f, const char *path_no_ext);
+void font_free(Font *f);
+int  gfx_font_width(const Font *f, const char *s);
+/* y is the top of the line. Draws a soft drop shadow under the text. */
+void gfx_font_text(Canvas *c, const Font *f, int x, int y, const char *s, uint32_t color);
+void gfx_font_centered(Canvas *c, const Font *f, int cx, int y, const char *s, uint32_t color);
+void gfx_font_right(Canvas *c, const Font *f, int right_x, int y, const char *s, uint32_t color);
+/* Word-wraps to max_w pixels, each line centered on cx. Returns the y just
+   below the last line. */
+int  gfx_font_wrapped(Canvas *c, const Font *f, int cx, int y, int max_w, const char *s, uint32_t color);
+
 /* Loads a PNG/JPEG from disk. Returns 0 on failure (img is zeroed). */
 int  image_load(Image *img, const char *path);
 /* Resizes with a box filter, for a one-off downscale of launcher art. */
