@@ -78,6 +78,11 @@ endif()
 if(UNIX)
   target_link_libraries(hellfire PRIVATE m)
 endif()
+if(UNIX AND NOT APPLE)
+  # Look for a bundled libSDL2 next to the executable first, so a zip
+  # build runs even where SDL2 isn't installed.
+  set_target_properties(hellfire PROPERTIES BUILD_RPATH "\$ORIGIN" INSTALL_RPATH "\$ORIGIN")
+endif()
 if(MINGW)
   # No libgcc DLL to ship: only SDL2.dll sits next to the exe.
   target_link_options(hellfire PRIVATE -static-libgcc)

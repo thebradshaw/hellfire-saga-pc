@@ -39,7 +39,7 @@ void launcher_init(const char *base_path)
 {
   /* SAWhane's Sonic, cut out and faded into the background. */
   load_scaled(&sonic, base_path, "sonic_sawhane.png", 336, 440);
-  image_fade(&sonic, 38, 120);
+  image_fade(&sonic, 20, 120);
   /* The HellFire Saga lettering from the title screen. */
   load_scaled(&logo, base_path, "logo.png", LOGO_W, LOGO_W * 235 / 578);
   screen = SCR_SETUP;
