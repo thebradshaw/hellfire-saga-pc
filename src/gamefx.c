@@ -24,6 +24,8 @@ static int    want_run, unwant_run;   /* consecutive game frames */
 static int    bars_target;            /* 0 = wide, 1 = bars in   */
 static double bars_pos;               /* 0..1, animated          */
 static int    hide_miso_wrap;
+static int    miso_waiting_seen;      /* the Miso logo has been parked off-screen */
+static int    widen_miso;
 
 void gamefx_reset(void)
 {
@@ -31,6 +33,8 @@ void gamefx_reset(void)
   bars_target = 0;
   bars_pos = 0.0;
   hide_miso_wrap = 0;
+  miso_waiting_seen = 0;
+  widen_miso = 0;
 }
 
 void gamefx_frame(void)
@@ -61,7 +65,15 @@ void gamefx_frame(void)
 
   /* On the SEGA screen the Miso logo waits just past the right edge; at
      400px it wraps around into the left edge until it slides in. */
-  hide_miso_wrap = mode == MODE_SEGA && emu_read_ram16(RAM_MISO_SLIDE) >= 0x180;
+  {
+    int slide = emu_read_ram16(RAM_MISO_SLIDE);
+    hide_miso_wrap = mode == MODE_SEGA && slide >= 0x180;
+    if (mode != MODE_SEGA) miso_waiting_seen = 0;
+    else if (slide >= 0x180) miso_waiting_seen = 1;
+    /* Once the Miso logo has settled, its background art stops 40px short
+       of the right edge: stretch the art right of the logo to fill it. */
+    widen_miso = mode == MODE_SEGA && miso_waiting_seen && slide == 0;
+  }
 }
 
 static double ease(double t)   /* smooth start and stop */
@@ -97,6 +109,21 @@ void gamefx_draw(uint32_t *px, int w, int h, int pitch, double dt)
     {
       uint32_t *row = px + (size_t)y * pitch;
       for (x = 0; x < side; x++) row[x] = row[side];
+    }
+  }
+
+  if (widen_miso && w == 400)
+  {
+    /* Stretch columns 292..359 (beam + curved stripes, right of the logo)
+       across 292..399. The beam is horizontal, so it simply runs on. */
+    enum { SRC0 = 292, SRC1 = 360, DST1 = 400 };
+    for (y = 0; y < h; y++)
+    {
+      uint32_t *row = px + (size_t)y * pitch;
+      uint32_t src[SRC1 - SRC0];
+      memcpy(src, row + SRC0, sizeof(src));
+      for (x = SRC0; x < DST1; x++)
+        row[x] = src[(x - SRC0) * (SRC1 - SRC0) / (DST1 - SRC0)];
     }
   }
 
