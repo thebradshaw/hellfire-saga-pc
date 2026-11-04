@@ -71,6 +71,7 @@ src/video.c       one SDL texture, pixel-perfect or fit scaling
 src/audio.c       short SDL audio queue with drift correction (low latency)
 src/controls.c    keyboard + SDL game controllers
 src/romcheck.c    SHA-1 check of the player's ROM
+src/widescreen.c  in-memory patches so the game draws level + sprites 400px wide
 src/emu.c         the only file that talks to the hardware core
 src/osd.h         glue header the core expects
 third_party/gpgx-wide   Genesis Plus GX Wide: 68000, Z80, VDP, YM2612, PSG in C
@@ -84,7 +85,7 @@ third_party/gpgx-wide   Genesis Plus GX Wide: 68000, Z80, VDP, YM2612, PSG in C
    as C reimplementations, because the game drives them directly. The
    recompiled C is generated on the player's PC from their own ROM, never
    committed here. Each recompiled frame is checked against step 1's output.
-3. **Widescreen polish**: fix objects and camera limits at the screen edges.
+3. **Widescreen polish**: level and sprites already fill 400px (`src/widescreen.c`); still to check: boss arenas, camera limits at level edges, other zones.
 4. **Boss black bars**: detect boss fights from game state and animate bars in to 320px.
 5. **Soundtrack**: render every track from the player's ROM and play it in the launcher.
 

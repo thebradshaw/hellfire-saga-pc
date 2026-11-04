@@ -13,11 +13,13 @@
 #define COL_BAD       RGB(255, 90, 70)
 #define COL_GOOD      RGB(140, 230, 120)
 
+#define LOGO_W 344   /* logo width on the 800x448 launcher canvas */
+
 typedef enum { SCR_SETUP, SCR_MAIN, SCR_OPTIONS, SCR_CREDITS, SCR_SOUNDTRACK } Screen;
 
 static Screen   screen;
 static int      cursor;
-static Image    art, logo;
+static Image    sonic, logo;
 static RomCheck rom;
 static char     notice[256];
 
@@ -35,16 +37,18 @@ static void load_scaled(Image *out, const char *base, const char *file, int w, i
 
 void launcher_init(const char *base_path)
 {
-  /* SAWhane's art fills the left side at full canvas height. */
-  load_scaled(&art,  base_path, "art_sawhane.png", 378, 448);
-  load_scaled(&logo, base_path, "title_screen.jpg", 320, 224);
+  /* SAWhane's Sonic, cut out and faded into the background. */
+  load_scaled(&sonic, base_path, "sonic_sawhane.png", 336, 440);
+  image_fade(&sonic, 38, 120);
+  /* The HellFire Saga lettering from the title screen. */
+  load_scaled(&logo, base_path, "logo.png", LOGO_W, LOGO_W * 235 / 578);
   screen = SCR_SETUP;
   cursor = 0;
 }
 
 void launcher_shutdown(void)
 {
-  image_free(&art);
+  image_free(&sonic);
   image_free(&logo);
 }
 
@@ -176,9 +180,11 @@ LauncherResult launcher_event(MenuAction a)
 
 /* ---- drawing -------------------------------------------------------------- */
 
-#define PANEL_X 400
-#define PANEL_W 400
-#define PANEL_CX (PANEL_X + PANEL_W / 2)
+/* Layout: logo top-left, menus and text below it on the left, and SAWhane's
+   Sonic faded into the background on the right. */
+#define LEFT_X   32
+#define LEFT_W   400
+#define CONTENT_Y 178
 
 static void draw_backdrop(Canvas *c, unsigned ticks)
 {
@@ -186,7 +192,7 @@ static void draw_backdrop(Canvas *c, unsigned ticks)
   gfx_vgradient(c, 0, 0, c->w, c->h, COL_BG_TOP, COL_BG_BOTTOM);
 
   /* slow drifting embers */
-  for (i = 0; i < 40; i++)
+  for (i = 0; i < 48; i++)
   {
     unsigned seed = (unsigned)i * 2654435761u;
     int x = (int)(seed % LAUNCHER_W);
@@ -195,13 +201,13 @@ static void draw_backdrop(Canvas *c, unsigned ticks)
     gfx_fill(c, x, y, 2, 2, RGBA(255, 140 + (seed >> 4) % 80, 40, 120));
   }
 
-  gfx_blit(c, &art, 0, 0);
-  /* soft edge between art and panel */
-  for (i = 0; i < 24; i++)
-    gfx_fill(c, 378 - 24 + i, 0, 1, c->h, RGBA(26, 6, 14, i * 10));
-  gfx_fill(c, 378, 0, PANEL_X - 378, c->h, RGBA(26, 6, 14, 255));
+  gfx_blit(c, &sonic, LAUNCHER_W - sonic.w - 24, LAUNCHER_H - sonic.h + 8);
+  gfx_blit(c, &logo, 20, 14);
+}
 
-  gfx_blit(c, &logo, PANEL_X + (PANEL_W - logo.w) / 2, 8);
+static void draw_heading(Canvas *c, int y, const char *s)
+{
+  gfx_text_shadow(c, LEFT_X, y, s, 2, COL_ACCENT);
 }
 
 static void draw_menu(Canvas *c, const char **items, int count, int top)
@@ -213,10 +219,10 @@ static void draw_menu(Canvas *c, const char **items, int count, int top)
     uint32_t col = i == cursor ? COL_ACCENT : COL_TEXT;
     if (i == cursor)
     {
-      gfx_fill(c, PANEL_X + 40, y - 6, PANEL_W - 80, 28, RGBA(255, 120, 30, 50));
-      gfx_text_shadow(c, PANEL_X + 52, y, ">", 2, col);
+      gfx_fill(c, LEFT_X - 8, y - 6, 260, 28, RGBA(255, 120, 30, 50));
+      gfx_text_shadow(c, LEFT_X, y, ">", 2, col);
     }
-    gfx_text_centered(c, PANEL_CX, y, items[i], 2, col);
+    gfx_text_shadow(c, LEFT_X + 28, y, items[i], 2, col);
   }
 }
 
@@ -224,77 +230,77 @@ static void draw_footer(Canvas *c)
 {
   char line[160];
   if (notice[0])
-    gfx_text_centered(c, PANEL_CX, LAUNCHER_H - 34, notice, 1, COL_GOOD);
+    gfx_text_shadow(c, LEFT_X, LAUNCHER_H - 34, notice, 1, COL_GOOD);
   snprintf(line, sizeof(line), "ROM: %s", romcheck_status_name(rom.status));
-  gfx_text_centered(c, PANEL_CX, LAUNCHER_H - 16, line, 1, rom.status == ROM_OK ? COL_DIM : COL_BAD);
+  gfx_text_shadow(c, LEFT_X, LAUNCHER_H - 18, line, 1, rom.status == ROM_OK ? COL_DIM : COL_BAD);
+}
+
+static void draw_hint(Canvas *c, const char *s)
+{
+  gfx_text_shadow(c, LEFT_X, LAUNCHER_H - 18, s, 1, COL_DIM);
 }
 
 static void draw_setup(Canvas *c)
 {
-  int y = 240;
-  int x = PANEL_X + 16, w = PANEL_W - 32;
+  int y = CONTENT_Y;
 
-  gfx_text_centered(c, PANEL_CX, y, "SET UP YOUR GAME", 2, COL_ACCENT);
-  y += 26;
-  y = gfx_text_wrapped(c, x, y, w,
+  draw_heading(c, y, "SET UP YOUR GAME");
+  y += 28;
+  y = gfx_text_wrapped(c, LEFT_X, y, LEFT_W,
         "This port does not include the game. You need your own "
-        "HellFire Saga v2.11 ROM, already patched.", 1, COL_TEXT) + 6;
-  y = gfx_text_wrapped(c, x, y, w,
+        "HellFire Saga v2.11 ROM, already patched.", 1, COL_TEXT) + 8;
+  y = gfx_text_wrapped(c, LEFT_X, y, LEFT_W,
         "1. Patch your own Sonic 3 ROM with the HellFire Saga v2.11 patch, "
         "using any patching tool.", 1, COL_TEXT) + 4;
-  y = gfx_text_wrapped(c, x, y, w,
+  y = gfx_text_wrapped(c, LEFT_X, y, LEFT_W,
         "2. Drag the patched .gen or .bin file onto this window.", 1, COL_TEXT) + 4;
-  y = gfx_text_wrapped(c, x, y, w,
-        "3. We check it and remember where it is.", 1, COL_TEXT) + 8;
+  y = gfx_text_wrapped(c, LEFT_X, y, LEFT_W,
+        "3. We check it and remember where it is.", 1, COL_TEXT) + 10;
 
   if (rom.status != ROM_MISSING || notice[0])
-    gfx_text_wrapped(c, x, y, w, notice[0] ? notice : romcheck_advice(rom.status), 1, COL_BAD);
+    gfx_text_wrapped(c, LEFT_X, y, LEFT_W, notice[0] ? notice : romcheck_advice(rom.status), 1, COL_BAD);
 
-  gfx_text_centered(c, PANEL_CX, LAUNCHER_H - 16, "Esc: quit", 1, COL_DIM);
+  draw_hint(c, "Esc: quit");
 }
 
 static void draw_options(Canvas *c)
 {
-  char labels[OPT_COUNT][64];
-  const char *items[OPT_COUNT];
+  char label[64];
   int i;
-  for (i = 0; i < OPT_COUNT; i++) { option_text(i, labels[i], sizeof(labels[i])); items[i] = labels[i]; }
 
-  gfx_text_centered(c, PANEL_CX, 238, "OPTIONS", 2, COL_ACCENT);
+  draw_heading(c, CONTENT_Y, "OPTIONS");
   for (i = 0; i < OPT_COUNT; i++)
   {
-    int y = 270 + i * 22;
+    int y = CONTENT_Y + 34 + i * 22;
     uint32_t col = i == cursor ? COL_ACCENT : COL_TEXT;
-    if (i == cursor) gfx_fill(c, PANEL_X + 20, y - 5, PANEL_W - 40, 18, RGBA(255, 120, 30, 50));
-    gfx_text_shadow(c, PANEL_X + 40, y, items[i], 1, col);
+    option_text(i, label, sizeof(label));
+    if (i == cursor) gfx_fill(c, LEFT_X - 8, y - 5, 300, 18, RGBA(255, 120, 30, 50));
+    gfx_text_shadow(c, LEFT_X + 8, y, label, 1, col);
   }
-  gfx_text_centered(c, PANEL_CX, LAUNCHER_H - 16,
-                    "Left/Right: change   X/Backspace: back", 1, COL_DIM);
-  (void)items;
+  draw_hint(c, "Left/Right: change   X/Backspace: back");
 }
 
 static void draw_credits(Canvas *c)
 {
-  int y = 236, x = PANEL_X + 16, w = PANEL_W - 32;
-  gfx_text_centered(c, PANEL_CX, y, "CREDITS", 2, COL_ACCENT);
-  y += 26;
-  y = gfx_text_wrapped(c, x, y, w, "Sonic the HellFire Saga by the HellFire Saga team.", 1, COL_TEXT) + 4;
-  y = gfx_text_wrapped(c, x, y, w, "Launcher art by SAWhane.", 1, COL_TEXT) + 4;
-  y = gfx_text_wrapped(c, x, y, w, "Sonic the Hedgehog 3 (c) SEGA. This is an unofficial, "
-                                   "free fan project. It does not include any game data.", 1, COL_TEXT) + 4;
-  y = gfx_text_wrapped(c, x, y, w, "Hardware emulation: Genesis Plus GX by Eke-Eke and "
-                                   "Charles MacDonald; widescreen fork by the libretro team.", 1, COL_TEXT) + 4;
-  gfx_text_wrapped(c, x, y, w, "Font: font8x8 by Daniel Hepper. Images: stb_image by Sean Barrett.", 1, COL_TEXT);
-  gfx_text_centered(c, PANEL_CX, LAUNCHER_H - 16, "Press any button", 1, COL_DIM);
+  int y = CONTENT_Y;
+  draw_heading(c, y, "CREDITS");
+  y += 28;
+  y = gfx_text_wrapped(c, LEFT_X, y, LEFT_W, "Sonic the HellFire Saga by the HellFire Saga team.", 1, COL_TEXT) + 4;
+  y = gfx_text_wrapped(c, LEFT_X, y, LEFT_W, "Launcher art by SAWhane.", 1, COL_TEXT) + 4;
+  y = gfx_text_wrapped(c, LEFT_X, y, LEFT_W, "Sonic the Hedgehog 3 (c) SEGA. This is an unofficial, "
+                                             "free fan project. It does not include any game data.", 1, COL_TEXT) + 4;
+  y = gfx_text_wrapped(c, LEFT_X, y, LEFT_W, "Hardware emulation: Genesis Plus GX by Eke-Eke and "
+                                             "Charles MacDonald; widescreen fork by the libretro team.", 1, COL_TEXT) + 4;
+  gfx_text_wrapped(c, LEFT_X, y, LEFT_W, "Font: font8x8 by Daniel Hepper. Images: stb_image by Sean Barrett.", 1, COL_TEXT);
+  draw_hint(c, "Press any button");
 }
 
 static void draw_soundtrack(Canvas *c)
 {
-  int x = PANEL_X + 16, w = PANEL_W - 32;
-  gfx_text_centered(c, PANEL_CX, 250, "SOUNDTRACK", 2, COL_ACCENT);
-  gfx_text_wrapped(c, x, 290, w, "Coming in a later update: every track, rendered from "
-                                 "your own ROM, playable right here.", 1, COL_TEXT);
-  gfx_text_centered(c, PANEL_CX, LAUNCHER_H - 16, "Press any button", 1, COL_DIM);
+  draw_heading(c, CONTENT_Y, "SOUNDTRACK");
+  gfx_text_wrapped(c, LEFT_X, CONTENT_Y + 34, LEFT_W, "Coming in a later update: every track, rendered from "
+                                                     "your own ROM, playable right here.", 1, COL_TEXT);
+  draw_hint(c, "Press any button");
 }
 
 void launcher_draw(Canvas *c, unsigned ticks)
@@ -303,7 +309,7 @@ void launcher_draw(Canvas *c, unsigned ticks)
   switch (screen)
   {
     case SCR_SETUP:      draw_setup(c); break;
-    case SCR_MAIN:       draw_menu(c, main_items, MAIN_COUNT, 250); draw_footer(c); break;
+    case SCR_MAIN:       draw_menu(c, main_items, MAIN_COUNT, CONTENT_Y + 6); draw_footer(c); break;
     case SCR_OPTIONS:    draw_options(c); break;
     case SCR_CREDITS:    draw_credits(c); break;
     case SCR_SOUNDTRACK: draw_soundtrack(c); break;

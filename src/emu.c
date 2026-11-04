@@ -208,3 +208,21 @@ uint8_t emu_read_ram8(uint32_t address)
 {
   return READ_BYTE(work_ram, address & 0xFFFF);
 }
+
+/* ROM bytes are stored byte-swapped in 16-bit pairs on little-endian hosts,
+   so byte address A lives at cart.rom[A ^ 1]. */
+uint8_t emu_rom_read8(uint32_t address)
+{
+  if (address >= MAXROMSIZE) return 0xFF;
+  return READ_BYTE(cart.rom, address);
+}
+
+void emu_rom_write8(uint32_t address, uint8_t value)
+{
+  if (address >= MAXROMSIZE) return;
+#ifdef LSB_FIRST
+  cart.rom[address ^ 1] = value;
+#else
+  cart.rom[address] = value;
+#endif
+}

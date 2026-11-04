@@ -200,6 +200,23 @@ int image_resize(Image *dst, const Image *src, int w, int h)
   return 1;
 }
 
+void image_fade(Image *img, int percent, int fade_px)
+{
+  int x, y;
+  for (y = 0; y < img->h; y++)
+  {
+    int k = percent;
+    int from_bottom = img->h - 1 - y;
+    if (fade_px > 0 && from_bottom < fade_px) k = k * from_bottom / fade_px;
+    for (x = 0; x < img->w; x++)
+    {
+      uint32_t p = img->px[y * img->w + x];
+      uint32_t a = (p >> 24) * (uint32_t)k / 100;
+      img->px[y * img->w + x] = (a << 24) | (p & 0x00FFFFFF);
+    }
+  }
+}
+
 void image_free(Image *img)
 {
   free(img->px);

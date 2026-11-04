@@ -62,6 +62,7 @@ add_executable(hellfire WIN32
   src/sha1.c
   src/romcheck.c
   src/hf_file.c
+  src/widescreen.c
   src/settings.c
   src/launcher.c)
 
@@ -97,7 +98,7 @@ add_custom_command(TARGET hellfire POST_BUILD
           ${CMAKE_SOURCE_DIR}/assets $<TARGET_FILE_DIR:hellfire>/assets)
 
 # Headless smoke test: boots a ROM for a few seconds and saves a screenshot.
-add_executable(hellfire_smoketest tools/smoketest.c src/emu.c src/sha1.c src/romcheck.c src/hf_file.c)
+add_executable(hellfire_smoketest tools/smoketest.c src/emu.c src/sha1.c src/romcheck.c src/hf_file.c src/widescreen.c)
 target_link_libraries(hellfire_smoketest PRIVATE gpgx)
 if(UNIX)
   target_link_libraries(hellfire_smoketest PRIVATE m)

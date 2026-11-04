@@ -42,6 +42,9 @@ int  gfx_text_wrapped(Canvas *c, int x, int y, int max_w, const char *s, int sca
 int  image_load(Image *img, const char *path);
 /* Resizes with a box filter, for a one-off downscale of launcher art. */
 int  image_resize(Image *dst, const Image *src, int w, int h);
+/* Multiplies alpha by percent (0-100) and fades the bottom fade_px rows
+   out to transparent, for art that sits behind the menus. */
+void image_fade(Image *img, int percent, int fade_px);
 void image_free(Image *img);
 
 #endif

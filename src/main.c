@@ -12,6 +12,7 @@
 #include "gfx.h"
 #include "settings.h"
 #include "launcher.h"
+#include "widescreen.h"
 
 #define WIDE_EXTRA_COLUMNS 10   /* 320 + 10*8 = 400 pixels */
 
@@ -31,6 +32,8 @@ static int start_game(void)
                              "The ROM could not be loaded.", video_window());
     return 0;
   }
+  /* Make the game draw its level and sprites across the extra columns. */
+  if (settings.widescreen) widescreen_apply();
   audio_clear();
   return 1;
 }
