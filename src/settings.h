@@ -6,6 +6,7 @@
 #define HF_SETTINGS_H
 
 typedef enum { SCALE_INTEGER = 0, SCALE_FIT = 1 } ScaleMode;
+typedef enum { CRT_OFF = 0, CRT_SCANLINES = 1, CRT_FULL = 2, CRT_COUNT } CrtMode;
 
 typedef struct
 {
@@ -17,6 +18,7 @@ typedef struct
   int  volume;       /* 0..100 */
   int  fps120;       /* 1 = present at 120 Hz (each game frame shown twice) */
   int  invincible;   /* 1 = nothing hurts you; pits still kill */
+  int  crt;          /* CrtMode */
 } Settings;
 
 extern Settings settings;

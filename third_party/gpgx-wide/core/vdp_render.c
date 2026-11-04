@@ -1660,16 +1660,22 @@ void render_bg_m5(int line)
     /* Plane A line buffer */
     dst = (uint32 *)&linebuf[1][0x20 + (start << 4)];
 
-    start_real = start + (config.h40_extra_columns / 4);
-    end_real = end - (config.h40_extra_columns / 4);
-
-    for(column = start; column < end; column++)
+    /* hellfire-saga-pc: draw the window at the game's real offset (40px
+       for 10 extra columns, which isn't a multiple of 16) and only its 320
+       game pixels, so text boxes are centered and the unused name table
+       columns past the 40th cell don't show as garbage. */
     {
-      atbuf = nt[column - (config.h40_extra_columns / 4)];
-      if ((column >= start_real) && (column < end_real)) {
+      int ex = config.h40_extra_columns * 4;
+      int px0 = start << 4, px1 = end << 4;
+      int g0 = px0 - ex, g1 = px1 - ex, gw = bitmap.viewport.w - 2 * ex;
+      if (g0 < 0) g0 = 0;
+      if (g1 > gw) g1 = gw;
+      memset(&linebuf[1][0x20 + px0], 0, px1 - px0);
+      for (column = g0 >> 4; column < ((g1 + 15) >> 4); column++)
+      {
+        dst = (uint32 *)&linebuf[1][0x20 + ex + (column << 4)];
+        atbuf = nt[column];
         DRAW_COLUMN(atbuf, v_line)
-      } else {
-        *dst++ = 0; *dst++ = 0; *dst++ = 0; *dst++ = 0;
       }
     }
   }
@@ -1877,16 +1883,22 @@ void render_bg_m5_vs(int line)
     /* Plane A line buffer */
     dst = (uint32 *)&linebuf[1][0x20 + (start << 4)];
 
-    start_real = start + (config.h40_extra_columns / 4);
-    end_real = end - (config.h40_extra_columns / 4);
-
-    for(column = start; column < end; column++)
+    /* hellfire-saga-pc: draw the window at the game's real offset (40px
+       for 10 extra columns, which isn't a multiple of 16) and only its 320
+       game pixels, so text boxes are centered and the unused name table
+       columns past the 40th cell don't show as garbage. */
     {
-      atbuf = nt[column - (config.h40_extra_columns / 4)];
-      if ((column >= start_real) && (column < end_real)) {
+      int ex = config.h40_extra_columns * 4;
+      int px0 = start << 4, px1 = end << 4;
+      int g0 = px0 - ex, g1 = px1 - ex, gw = bitmap.viewport.w - 2 * ex;
+      if (g0 < 0) g0 = 0;
+      if (g1 > gw) g1 = gw;
+      memset(&linebuf[1][0x20 + px0], 0, px1 - px0);
+      for (column = g0 >> 4; column < ((g1 + 15) >> 4); column++)
+      {
+        dst = (uint32 *)&linebuf[1][0x20 + ex + (column << 4)];
+        atbuf = nt[column];
         DRAW_COLUMN(atbuf, v_line)
-      } else {
-        *dst++ = 0; *dst++ = 0; *dst++ = 0; *dst++ = 0;
       }
     }
   }
@@ -2196,16 +2208,22 @@ void render_bg_m5_vs_enhanced(int line)
     /* Plane A line buffer */
     dst = (uint32 *)&linebuf[1][0x20 + (start << 4)];
 
-    start_real = start + (config.h40_extra_columns / 4);
-    end_real = end - (config.h40_extra_columns / 4);
-
-    for(column = start; column < end; column++)
+    /* hellfire-saga-pc: draw the window at the game's real offset (40px
+       for 10 extra columns, which isn't a multiple of 16) and only its 320
+       game pixels, so text boxes are centered and the unused name table
+       columns past the 40th cell don't show as garbage. */
     {
-      atbuf = nt[column - (config.h40_extra_columns / 4)];
-      if ((column >= start_real) && (column < end_real)) {
+      int ex = config.h40_extra_columns * 4;
+      int px0 = start << 4, px1 = end << 4;
+      int g0 = px0 - ex, g1 = px1 - ex, gw = bitmap.viewport.w - 2 * ex;
+      if (g0 < 0) g0 = 0;
+      if (g1 > gw) g1 = gw;
+      memset(&linebuf[1][0x20 + px0], 0, px1 - px0);
+      for (column = g0 >> 4; column < ((g1 + 15) >> 4); column++)
+      {
+        dst = (uint32 *)&linebuf[1][0x20 + ex + (column << 4)];
+        atbuf = nt[column];
         DRAW_COLUMN(atbuf, v_line)
-      } else {
-        *dst++ = 0; *dst++ = 0; *dst++ = 0; *dst++ = 0;
       }
     }
   }
@@ -2371,16 +2389,22 @@ void render_bg_m5_im2(int line)
     /* Plane A line buffer */
     dst = (uint32 *)&linebuf[1][0x20 + (start << 4)];
 
-    start_real = start + (config.h40_extra_columns / 4);
-    end_real = end - (config.h40_extra_columns / 4);
-
-    for(column = start; column < end; column++)
+    /* hellfire-saga-pc: draw the window at the game's real offset (40px
+       for 10 extra columns, which isn't a multiple of 16) and only its 320
+       game pixels, so text boxes are centered and the unused name table
+       columns past the 40th cell don't show as garbage. */
     {
-      atbuf = nt[column - (config.h40_extra_columns / 4)];
-      if ((column >= start_real) && (column < end_real)) {
+      int ex = config.h40_extra_columns * 4;
+      int px0 = start << 4, px1 = end << 4;
+      int g0 = px0 - ex, g1 = px1 - ex, gw = bitmap.viewport.w - 2 * ex;
+      if (g0 < 0) g0 = 0;
+      if (g1 > gw) g1 = gw;
+      memset(&linebuf[1][0x20 + px0], 0, px1 - px0);
+      for (column = g0 >> 4; column < ((g1 + 15) >> 4); column++)
+      {
+        dst = (uint32 *)&linebuf[1][0x20 + ex + (column << 4)];
+        atbuf = nt[column];
         DRAW_COLUMN_IM2(atbuf, v_line)
-      } else {
-        *dst++ = 0; *dst++ = 0; *dst++ = 0; *dst++ = 0;
       }
     }
   }
@@ -2587,16 +2611,22 @@ void render_bg_m5_im2_vs(int line)
     /* Plane A line buffer */
     dst = (uint32 *)&linebuf[1][0x20 + (start << 4)];
 
-    start_real = start + (config.h40_extra_columns / 4);
-    end_real = end - (config.h40_extra_columns / 4);
-
-    for(column = start; column < end; column++)
+    /* hellfire-saga-pc: draw the window at the game's real offset (40px
+       for 10 extra columns, which isn't a multiple of 16) and only its 320
+       game pixels, so text boxes are centered and the unused name table
+       columns past the 40th cell don't show as garbage. */
     {
-      atbuf = nt[column - (config.h40_extra_columns / 4)];
-      if ((column >= start_real) && (column < end_real)) {
+      int ex = config.h40_extra_columns * 4;
+      int px0 = start << 4, px1 = end << 4;
+      int g0 = px0 - ex, g1 = px1 - ex, gw = bitmap.viewport.w - 2 * ex;
+      if (g0 < 0) g0 = 0;
+      if (g1 > gw) g1 = gw;
+      memset(&linebuf[1][0x20 + px0], 0, px1 - px0);
+      for (column = g0 >> 4; column < ((g1 + 15) >> 4); column++)
+      {
+        dst = (uint32 *)&linebuf[1][0x20 + ex + (column << 4)];
+        atbuf = nt[column];
         DRAW_COLUMN_IM2(atbuf, v_line)
-      } else {
-        *dst++ = 0; *dst++ = 0; *dst++ = 0; *dst++ = 0;
       }
     }
   }

@@ -53,6 +53,7 @@ static const uint8_t hook_left_col[] = {
 };
 
 #define HOOK_LEFT_COL  (HOOK_BASE + 0x00)
+#define SURFACE_MAPS   (HOOK_BASE + 0x100)   /* see build_surface_maps */
 
 /* hook_sprite: object X relative to the camera, shifted right by 40 so the
    "is it on screen" test covers the extra columns. */
@@ -124,7 +125,45 @@ static const Patch patches[] = {
   P(0x2012, L(0x0C, 0x42, 0x01, 0xC0), L(0x0C, 0x42, 0x01, 0xE8), "pieces 3: right"),
   P(0x2074, L(0x0C, 0x42, 0x00, 0x60), L(0x0C, 0x42, 0x00, 0x38), "pieces 4: left"),
   P(0x207A, L(0x0C, 0x42, 0x01, 0xC0), L(0x0C, 0x42, 0x01, 0xE8), "pieces 4: right"),
+
+  /* ---- water/lava surface (object at 0x144F6): wider sprite strips ---- */
+  P(0x144BA, L(0x21, 0x7C, 0x00, 0x01, 0x45, 0x82, 0x00, 0x0C),
+             L(0x21, 0x7C, 0x00, (SURFACE_MAPS >> 16) & 0xFF, (SURFACE_MAPS >> 8) & 0xFF, SURFACE_MAPS & 0xFF, 0x00, 0x0C),
+             "surface: wider mappings"),
+  P(0x1452C, L(0x06, 0x5A, 0x00, 0xC0), L(0x06, 0x5A, 0x01, 0x00), "surface: second strip 256px on"),
 };
+
+/*
+ * The water/lava surface is one object drawn twice, 192px apart, each copy
+ * 192px wide: 384px in all, a little short of 400. These mappings make each
+ * copy 256px (reaching 160px left of the object instead of 96) and the code
+ * patch above moves the second copy to 256px, so the strip covers the whole
+ * wide screen. The 64px wave pattern keeps its phase. Same 7 frames as the
+ * original table at 0x14582: frames 0-3 are sparse wave tops, 4-6 solid.
+ */
+static size_t build_surface_maps(uint8_t *out)
+{
+  static const uint16_t tiles[7] = { 0x0000, 0x0000, 0x0008, 0x0800, 0x0000, 0x0008, 0x0800 };
+  size_t n = 14, f;
+  for (f = 0; f < 7; f++)
+  {
+    int dense = f >= 4, k, count = dense ? 8 : 4;
+    out[f * 2] = (uint8_t)(n >> 8);
+    out[f * 2 + 1] = (uint8_t)n;
+    out[n++] = 0; out[n++] = (uint8_t)count;
+    for (k = 0; k < count; k++)
+    {
+      int x = -160 + k * (dense ? 32 : 64);
+      out[n++] = 0xFD;                      /* y -3 */
+      out[n++] = 0x0D;                      /* 4x2 tiles */
+      out[n++] = (uint8_t)(tiles[f] >> 8);
+      out[n++] = (uint8_t)tiles[f];
+      out[n++] = (uint8_t)((x >> 8) & 0xFF);
+      out[n++] = (uint8_t)(x & 0xFF);
+    }
+  }
+  return n;
+}
 
 int widescreen_apply(void)
 {
@@ -133,7 +172,7 @@ int widescreen_apply(void)
   /* Check everything first: all or nothing. */
   for (i = 0; i < n; i++)
     if (!matches(patches[i].addr, patches[i].expect, patches[i].len)) return -1;
-  for (i = 0; i < 0x40; i++)
+  for (i = 0; i < 0x200; i++)
     if (emu_rom_read8(HOOK_BASE + (uint32_t)i) != 0xFF) return -1;
   for (i = 0x40; i < 0x60; i += 4)                 /* vectors 16-23 unused */
     if (!matches((uint32_t)i, (const uint8_t[]){ 0x00, 0x3A, 0xD1, 0xCA }, 4)) return -1;
@@ -141,6 +180,10 @@ int widescreen_apply(void)
   write(HOOK_LEFT_COL, hook_left_col, sizeof(hook_left_col));
   write(HOOK_SPRITE, hook_sprite, sizeof(hook_sprite));
   write(HOOK_ROW, hook_row, sizeof(hook_row));
+  {
+    uint8_t maps[320];
+    write(SURFACE_MAPS, maps, build_surface_maps(maps));
+  }
   for (i = 0; i < n; i++) write(patches[i].addr, patches[i].replace, patches[i].len);
   return (int)n;
 }

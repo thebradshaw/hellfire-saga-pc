@@ -74,7 +74,7 @@ static void present_game(double dt)
     memcpy(game_px + y * w, (const uint8_t *)px + (size_t)y * pitch, (size_t)w * 4);
   game_w = w; game_h = h;
   gamefx_draw(game_px, w, h, w, dt);
-  video_present(game_px, w, h, w * 4, settings.scale_mode);
+  video_present_crt(game_px, w, h, w * 4, settings.scale_mode, settings.crt);
 }
 
 int main(int argc, char **argv)
@@ -103,6 +103,12 @@ int main(int argc, char **argv)
   controls_init();
 
   base_path = SDL_GetBasePath();
+  {
+    char icon_path[1200];
+    Image icon;
+    snprintf(icon_path, sizeof(icon_path), "%sassets/icon.png", base_path ? base_path : "./");
+    if (image_load(&icon, icon_path)) { video_set_icon(icon.px, icon.w, icon.h); image_free(&icon); }
+  }
   launcher_init(base_path ? base_path : "./");
   SDL_free(base_path);
 
@@ -250,7 +256,7 @@ int main(int argc, char **argv)
     {
       Canvas c = snapshot_frame();
       pause_draw(&c);
-      video_present(c.px, c.w, c.h, c.w * 4, settings.scale_mode);
+      video_present_crt(c.px, c.w, c.h, c.w * 4, settings.scale_mode, settings.crt);
       if (!settings.vsync) SDL_Delay(16);
     }
     else

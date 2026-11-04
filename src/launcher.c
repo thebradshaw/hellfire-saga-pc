@@ -47,7 +47,7 @@ void launcher_init(const char *base_path)
 {
   /* SAWhane's Sonic, cut out and faded into the background. */
   load_scaled(&sonic, base_path, "sonic_sawhane.png", 336, 440);
-  image_fade(&sonic, 20, 120);
+  image_fade(&sonic, 12, 120);
   /* The HellFire Saga lettering from the title screen. */
   load_scaled(&logo, base_path, "logo.png", LOGO_W, LOGO_W * 235 / 578);
   load_font(&f_title, base_path, "gothic_title");
@@ -101,11 +101,11 @@ void launcher_offer_rom(const char *path)
 static const char *main_items[] = { "Play", "Soundtrack", "Options", "Credits", "Quit" };
 #define MAIN_COUNT 5
 
-#define OPT_COUNT 8
+#define OPT_COUNT 9
 
 static const char *option_label(int i)
 {
-  static const char *labels[] = { "Screen", "Display", "Scaling", "Frame rate", "VSync", "Invincible", "Volume", "Back" };
+  static const char *labels[] = { "Screen", "Display", "Scaling", "CRT effect", "Frame rate", "VSync", "Invincible", "Volume", "Back" };
   return labels[i];
 }
 
@@ -116,10 +116,12 @@ static void option_value(int i, char *buf, size_t n)
     case 0: snprintf(buf, n, "%s", settings.widescreen ? "Wide 400x224" : "Original 320x224"); break;
     case 1: snprintf(buf, n, "%s", settings.fullscreen ? "Fullscreen" : "Window"); break;
     case 2: snprintf(buf, n, "%s", settings.scale_mode == SCALE_INTEGER ? "Pixel perfect" : "Fill screen"); break;
-    case 3: snprintf(buf, n, "%s", settings.fps120 ? "120 FPS" : "60 FPS"); break;
-    case 4: snprintf(buf, n, "%s", settings.vsync ? "On" : "Off"); break;
-    case 5: snprintf(buf, n, "%s", settings.invincible ? "On (only pits can kill you)" : "Off"); break;
-    case 6: snprintf(buf, n, "%d%%", settings.volume); break;
+    case 3: snprintf(buf, n, "%s", settings.crt == CRT_FULL ? "CRT (scanlines + RGB mask)" :
+                                   settings.crt == CRT_SCANLINES ? "Scanlines" : "Off"); break;
+    case 4: snprintf(buf, n, "%s", settings.fps120 ? "120 FPS" : "60 FPS"); break;
+    case 5: snprintf(buf, n, "%s", settings.vsync ? "On" : "Off"); break;
+    case 6: snprintf(buf, n, "%s", settings.invincible ? "On (spikes, pits and crushing still hurt)" : "Off"); break;
+    case 7: snprintf(buf, n, "%d%%", settings.volume); break;
     default: buf[0] = 0; break;
   }
 }
@@ -131,10 +133,11 @@ static LauncherResult change_option(int i, int dir)
     case 0: settings.widescreen = !settings.widescreen; break;
     case 1: settings.fullscreen = !settings.fullscreen; settings_save(); return LAUNCH_VIDEO_CHANGED;
     case 2: settings.scale_mode = !settings.scale_mode; break;
-    case 3: settings.fps120 = !settings.fps120; break;
-    case 4: settings.vsync = !settings.vsync; settings_save(); return LAUNCH_VIDEO_CHANGED;
-    case 5: settings.invincible = !settings.invincible; break;
-    case 6:
+    case 3: settings.crt = (settings.crt + dir + CRT_COUNT) % CRT_COUNT; break;
+    case 4: settings.fps120 = !settings.fps120; break;
+    case 5: settings.vsync = !settings.vsync; settings_save(); return LAUNCH_VIDEO_CHANGED;
+    case 6: settings.invincible = !settings.invincible; break;
+    case 7:
       settings.volume += dir * 10;
       if (settings.volume < 0)   settings.volume = 0;
       if (settings.volume > 100) settings.volume = 100;
@@ -312,12 +315,13 @@ static void draw_options(Canvas *c)
   draw_heading(c, CONTENT_Y, "Options");
   for (i = 0; i < OPT_COUNT; i++)
   {
-    int y = CONTENT_Y + f_title.line_h + 6 + i * 25;
+    int y = CONTENT_Y + f_title.line_h + 2 + i * 23;
     uint32_t col = i == cursor ? COL_ACCENT : COL_TEXT;
-    if (i == cursor) draw_selection(c, y, 25, 420);
+    if (i == cursor) draw_selection(c, y, 23, 440);
     option_value(i, value, sizeof(value));
     if (value[0])
     {
+      y -= 1;
       /* Label right-aligned, value left-aligned, meeting at the center. */
       gfx_font_right(c, &f_body, CENTER_X - 12, y + 1, option_label(i), i == cursor ? COL_ACCENT : COL_DIM);
       gfx_font_text(c, &f_body, CENTER_X + 12, y + 1, value, col);

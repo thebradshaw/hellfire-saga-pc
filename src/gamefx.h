@@ -6,7 +6,8 @@
  *    fights, cutscenes/text boxes and the title screen, and slide back out.
  *  - A fix for the SEGA screen, where the Miso logo waiting off the right
  *    edge wraps around into the extra pixels on the left.
- *  - An invincibility toggle: nothing hurts you, but pits still kill.
+ *  - An invincibility toggle: enemies, projectiles and drowning can't hurt
+ *    you, but spikes, pits and being crushed still do.
  *
  * Addresses are for HellFire Saga v2.11 only (SHA-1 f8f57b72...).
  */

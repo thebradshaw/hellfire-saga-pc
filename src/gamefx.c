@@ -8,6 +8,8 @@
 #define RAM_GAME_MODE   0xE6B8   /* byte: main loop dispatch, see 0x3D4    */
 #define MODE_LEVEL      0x04
 #define MODE_TITLE      0x0C     /* the notices and the title screen        */
+#define MODE_TITLE_BACK 0x10     /* title screen again, after leaving a game */
+#define MODE_LOADING    0x84     /* level loading + title card              */
 #define MODE_SEGA       0x28     /* SEGA and Red Miso Studios logos         */
 #define RAM_CAM_MIN_X   0xCF52   /* word: camera left limit                 */
 #define RAM_CAM_MAX_X   0xCF54   /* word: camera right limit                */
@@ -26,6 +28,7 @@ static double bars_pos;               /* 0..1, animated          */
 static int    hide_miso_wrap;
 static int    miso_waiting_seen;      /* the Miso logo has been parked off-screen */
 static int    widen_miso;
+static int    had_control;            /* player has moved freely in this level */
 
 void gamefx_reset(void)
 {
@@ -35,6 +38,7 @@ void gamefx_reset(void)
   hide_miso_wrap = 0;
   miso_waiting_seen = 0;
   widen_miso = 0;
+  had_control = 0;
 }
 
 void gamefx_frame(void)
@@ -42,10 +46,20 @@ void gamefx_frame(void)
   int mode = emu_read_ram8(RAM_GAME_MODE);
   int want = 0, now = 0;
 
-  if (mode == MODE_TITLE)
+  if (mode != MODE_LEVEL) had_control = 0;
+
+  if (mode == MODE_TITLE || mode == MODE_TITLE_BACK)
   {
     /* Notices and title screen: the art is 320px wide. */
     want = now = 1;
+  }
+  else if (mode == MODE_LOADING)
+  {
+    /* Level loading and its title card: no bars, and none left over from
+       the title screen (the screen is black when this starts). */
+    bars_target = 0;
+    bars_pos = 0.0;
+    want_run = 0;
   }
   else if (mode == MODE_LEVEL)
   {
@@ -54,7 +68,11 @@ void gamefx_frame(void)
     int max_x = emu_read_ram16(RAM_CAM_MAX_X);
     int boss  = max_x - min_x < 16;
     /* Cutscenes and text boxes take control away from the player. */
-    int scene = emu_read_ram8(RAM_CTRL_LOCK) != 0;
+    int locked = emu_read_ram8(RAM_CTRL_LOCK) != 0;
+    /* The title card at the start of a level also locks control: only
+       count locks after the player has had control once. */
+    int scene = locked && had_control;
+    if (!locked) had_control = 1;
     want = boss || scene;
   }
 
@@ -160,18 +178,26 @@ typedef struct
   int           len;
 } Toggle;
 
+/* "tst.l (sp); nop": the return address on the stack is never zero, so
+   this clears Z and a following "bne" always takes its no-damage branch,
+   without touching any register. */
+#define SKIP_Z  { 0x4A, 0x97, 0x4E, 0x71 }
+
 static const Toggle invincible_patches[] = {
-  /* HurtCharacter (0x7EF8): "tst.w $EBC2.w" -> "moveq #1,d0; nop", so its
-     next "bne" always takes the no-damage exit. Covers enemies, spikes,
-     projectiles and hazards. */
-  { 0x7EFE, { 0x4A, 0x78, 0xEB, 0xC2 }, { 0x70, 0x01, 0x4E, 0x71 }, 4 },
-  /* KillCharacter (0x7FF0): same trick on its debug-mode check, so being
-     crushed and other instant deaths are skipped... */
-  { 0x7FF0, { 0x4A, 0x78, 0xE7, 0x2A }, { 0x70, 0x01, 0x4E, 0x71 }, 4 },
-  /* ...except falling out of the level, which now jumps just past it. */
-  { 0xDE16, { 0x4E, 0xF9, 0x00, 0x00, 0x7F, 0xF0 }, { 0x4E, 0xF9, 0x00, 0x00, 0x7F, 0xF6 }, 6 },
-  /* Underwater HP drain (0xD618): "tst.b $EAF8.w" -> "bra.s" to its rts. */
+  /* HurtCharacter (0x7EF8), used by enemies and projectiles:
+     its "tst.w $EBC2.w; bne no_hurt" always skips. */
+  { 0x7EFE, { 0x4A, 0x78, 0xEB, 0xC2 }, SKIP_Z, 4 },
+  /* Hazard floor drain (0x7C50, 1 HP at a time): branch to its exit. */
+  { 0x7C50, { 0x10, 0x38, 0xEA, 0xF8 }, { 0x60, 0x00, 0x00, 0x4E }, 4 },
+  /* Another hit (0x93C90, -5 HP): "subq.b #5,$EAF8.w" -> "bra.s" past it. */
+  { 0x93CA4, { 0x5B, 0x38 }, { 0x60, 0x08 }, 2 },
+  /* Underwater HP drain (0xD618): "tst.b $EAF8.w" -> "bra.s" to its rts,
+     so Sonic can stay underwater forever. */
   { 0xD628, { 0x4A, 0x38 }, { 0x60, 0x58 }, 2 },
+  /* Spikes still hurt: they call into HurtCharacter past this check
+     (jsr $7F06 from 0x12034). One obstacle traps Sonic in a spike pit until
+     he dies, so blocking spikes could soft-lock the game. Being crushed
+     and falling into pits still kill too (KillCharacter is not touched). */
 };
 
 #define TOGGLE_COUNT (sizeof(invincible_patches) / sizeof(invincible_patches[0]))

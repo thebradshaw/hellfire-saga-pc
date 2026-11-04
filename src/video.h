@@ -20,6 +20,11 @@ int  video_refresh_rate(void);
    the window with square pixels, either by whole numbers (sharpest) or as
    large as fits. Anything outside it is black. */
 void video_present(const uint32_t *px, int w, int h, int pitch_bytes, int scale_mode);
+/* Same, with a CRT look on top (CrtMode): scanlines, or scanlines plus an
+   RGB aperture-grille mask. Each game line gets its own scanline. */
+void video_present_crt(const uint32_t *px, int w, int h, int pitch_bytes, int scale_mode, int crt);
+/* Sets the window icon from 32-bit ARGB pixels. */
+void video_set_icon(const uint32_t *px, int w, int h);
 
 SDL_Window *video_window(void);
 

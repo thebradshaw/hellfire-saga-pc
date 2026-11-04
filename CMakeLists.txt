@@ -52,7 +52,14 @@ find_package(SDL2 REQUIRED)
 # ---------------------------------------------------------------------------
 # The game executable
 # ---------------------------------------------------------------------------
+set(HELLFIRE_RESOURCES "")
+if(WIN32)
+  enable_language(RC)
+  set(HELLFIRE_RESOURCES src/hellfire.rc)
+endif()
+
 add_executable(hellfire WIN32
+  ${HELLFIRE_RESOURCES}
   src/main.c
   src/emu.c
   src/audio.c
