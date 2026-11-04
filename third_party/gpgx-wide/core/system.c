@@ -1,0 +1,1586 @@
+/***************************************************************************************
+ *  Genesis Plus
+ *  Virtual System emulation
+ *
+ *  Support for 16-bit & 8-bit hardware modes
+ *
+ *  Copyright (C) 1998-2003  Charles Mac Donald (original code)
+ *  Copyright (C) 2007-2024  Eke-Eke (Genesis Plus GX)
+ *
+ *  Redistribution and use of this code or any derivative works are permitted
+ *  provided that the following conditions are met:
+ *
+ *   - Redistributions may not be sold, nor may they be used in a commercial
+ *     product or activity.
+ *
+ *   - Redistributions that are modified from the original source must include the
+ *     complete source code, including the source code for all components used by a
+ *     binary built from the modified sources. However, as a special exception, the
+ *     source code distributed need not include anything that is normally distributed
+ *     (in either source or binary form) with the major components (compiler, kernel,
+ *     and so on) of the operating system on which the executable runs, unless that
+ *     component itself accompanies the executable.
+ *
+ *   - Redistributions must reproduce the above copyright notice, this list of
+ *     conditions and the following disclaimer in the documentation and/or other
+ *     materials provided with the distribution.
+ *
+ *  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ *  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ *  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ *  ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
+ *  LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ *  CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ *  SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ *  INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ *  CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ *  ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ *  POSSIBILITY OF SUCH DAMAGE.
+ *
+ ****************************************************************************************/
+
+#include "shared.h"
+#include "eq.h"
+#include "fm_enhance.h"
+
+extern int8 audio_hard_disable;
+
+/* Global variables */
+t_bitmap bitmap;
+t_snd snd;
+uint32 mcycles_vdp;
+uint8 system_hw;
+uint8 system_bios;
+uint32 system_clock;
+int16 SVP_cycles = 800; 
+
+static uint8 pause_b;
+static EQSTATE eq[2];
+static int16 llp,rrp;
+static int16 *fm_scratch;   /* FM-only stream scratch for the enhancement insert */
+
+/******************************************************************************************/
+/* Audio subsystem                                                                        */
+/******************************************************************************************/
+
+int audio_init(int samplerate, double framerate)
+{
+  /* Shutdown first */
+  audio_shutdown();
+
+  /* Clear the sound data context */
+  memset(&snd, 0, sizeof (snd));
+
+  /* Initialize Blip Buffers */
+  snd.blips[0] = blip_new(samplerate / 10);
+  if (!snd.blips[0])
+  {
+    return -1;
+  }
+
+  /* Mega CD sound hardware */
+  if (system_hw == SYSTEM_MCD)
+  {
+    /* allocate blip buffers */
+    snd.blips[1] = blip_new(samplerate / 10);
+    snd.blips[2] = blip_new(samplerate / 10);
+    if (!snd.blips[1] || !snd.blips[2])
+    {
+      audio_shutdown();
+      return -1;
+    }
+  }
+
+  /* Dedicated FM-only Blip Buffer + scratch for the optional FM enhancement.
+     Allocated unconditionally (small); only used when config.fm_enhance != 0. */
+  snd.blips[3] = blip_new(samplerate / 10);
+  fm_scratch   = (int16 *)malloc((samplerate / 10) * 2 * sizeof(int16));
+  if (!snd.blips[3] || !fm_scratch)
+  {
+    audio_shutdown();
+    return -1;
+  }
+
+  /* Initialize resampler internal rates */
+  audio_set_rate(samplerate, framerate);
+
+  /* Set audio enable flag */
+  snd.enabled = 1;
+
+  /* Reset audio */
+  audio_reset();
+
+  return (0);
+}
+
+void audio_set_rate(int samplerate, double framerate)
+{
+  /* Number of M-cycles executed per second. */
+  /* All emulated chips are kept in sync by using a common oscillator (MCLOCK)            */
+  /*                                                                                      */
+  /* The original console would run exactly 53693175 M-cycles per sec (53203424 for PAL), */
+  /* 3420 M-cycles per line and 262 (313 for PAL) lines per frame, which gives an exact   */
+  /* framerate of 59.92 (49.70 for PAL) frames per second.                                */
+  /*                                                                                      */
+  /* Since audio samples are generated at the end of the frame, to prevent audio skipping */
+  /* or lag between emulated frames, number of samples rendered per frame must be set to  */
+  /* output samplerate (number of samples played per second) divided by input framerate   */
+  /* (number of frames emulated per seconds).                                             */
+  /*                                                                                      */
+  /* On some systems, we may want to achieve 100% smooth video rendering by synchronizing */
+  /* frame emulation with VSYNC, which frequency is generally not exactly those values.   */
+  /* In that case, input framerate (number of frames emulated per seconds) is the same as */
+  /* output framerate (number of frames rendered per seconds) by the host video hardware. */
+  /*                                                                                      */
+  /* When no framerate is specified, base clock is set to original master clock value.    */
+  /* Otherwise, it is set to number of M-cycles emulated per line (fixed) multiplied by   */
+  /* number of lines per frame (VDP mode specific) multiplied by input framerate.         */
+  /*                                                                                      */
+  double mclk = framerate ? (MCYCLES_PER_LINE * (vdp_pal ? 313 : 262) * framerate) : system_clock;
+
+  /* For maximal accuracy, sound chips are running at their original rate using common */
+  /* master clock timebase so they remain perfectly synchronized together, while still */
+  /* being synchronized with 68K and Z80 CPUs as well. Mixed sound chip output is then */
+  /* resampled to desired rate at the end of each frame, using Blip Buffer.            */
+  /* When no framerate is specified the base clock is the exact integer master
+     clock, so compute every resample ratio in integer arithmetic - identical
+     on every platform (see blip_set_rates_exact). Only the optional VSYNC-sync
+     path (framerate != 0) has a fractional clock and keeps the double form. */
+  int rate_exact = (framerate == 0);
+
+  if (rate_exact)
+    blip_set_rates_exact(snd.blips[0], system_clock, 1, samplerate);
+  else
+    blip_set_rates(snd.blips[0], mclk, samplerate);
+
+  /* FM-only enhancement Blip Buffer shares the FM master-clock timebase */
+  if (snd.blips[3])
+  {
+    if (rate_exact)
+      blip_set_rates_exact(snd.blips[3], system_clock, 1, samplerate);
+    else
+      blip_set_rates(snd.blips[3], mclk, samplerate);
+  }
+
+  /* Mega CD sound hardware enabled ? */
+  if (snd.blips[1] && snd.blips[2])
+  {
+    /* number of SCD master clocks run per second (== SCD_CLOCK when exact) */
+    mclk = (mclk / system_clock) * SCD_CLOCK;
+
+    /* PCM core */
+    pcm_init(mclk, samplerate, rate_exact);
+
+    /* CDD core */
+    cdd_init(samplerate);
+  }
+
+  /* Reinitialize internal rates */
+  snd.sample_rate = samplerate;
+  snd.frame_rate  = framerate;
+
+  /* (Re)size the FM enhancement delay lines for the output rate and apply
+     the currently selected strength. */
+  fm_enhance_init(samplerate);
+  fm_enhance_set_level(config.fm_enhance);
+}
+
+void audio_reset(void)
+{
+  int i;
+  
+  /* Clear blip buffers */
+  for (i=0; i<4; i++)
+  {
+    if (snd.blips[i])
+    {
+      blip_clear(snd.blips[i]);
+    }
+  }
+
+  /* Clear FM enhancement reverb/filter history */
+  fm_enhance_reset();
+
+  /* Low-Pass filter */
+  llp = 0;
+  rrp = 0;
+
+  /* 3 band EQ */
+  audio_set_equalizer();
+}
+
+void audio_set_equalizer(void)
+{
+  /* gains (percent) are converted to fixed point inside the EQ */
+  init_3band_state(&eq[0],config.low_freq,config.high_freq,snd.sample_rate,config.lg,config.mg,config.hg);
+  init_3band_state(&eq[1],config.low_freq,config.high_freq,snd.sample_rate,config.lg,config.mg,config.hg);
+}
+
+void audio_shutdown(void)
+{
+  int i;
+  
+  /* Delete blip buffers */
+  for (i=0; i<4; i++)
+  {
+    blip_delete(snd.blips[i]);
+    snd.blips[i] = 0;
+    blip_delete_buffer_state(snd.blip_states[i]);
+    snd.blip_states[i] = 0;
+  }
+
+  /* Free FM enhancement scratch */
+  if (fm_scratch)
+  {
+    free(fm_scratch);
+    fm_scratch = 0;
+  }
+}
+
+/* Rescale the single-pole low-pass coefficient from its 44.1 kHz tuning to the
+   current output rate: a_fs = a0 ^ (44100 / fs) with a0 = lp_range / 65536.
+   Done entirely in fixed point (Q30 internal) so the coefficient is identical
+   on every platform - the former pow() could diverge by a step across libm
+   implementations and desync netplay. Bit-exact with pow() at 44.1 kHz; within
+   one 0.16 step at other rates (verified against libm over the whole range). */
+#define LP_Q          30
+#define LP_Q1         ((eq_int64)1 << LP_Q)
+#define LP_LN2        ((eq_int64)744261118)      /* round(ln2 * 2^30) */
+#define LP_MULQ(a, b) (((a) * (b)) >> LP_Q)
+
+static eq_int64 lp_ln_q30(eq_int64 x)
+{
+  eq_int64 y, y2, t;
+  int k = 0;
+  if (x <= 0)
+    return -((eq_int64)40 << LP_Q);
+  while (x <  LP_Q1)         { x <<= 1; k++; }
+  while (x >= (LP_Q1 << 1))  { x >>= 1; k--; }
+  y  = ((x - LP_Q1) << LP_Q) / (x + LP_Q1);      /* |y| < 1/3 */
+  y2 = LP_MULQ(y, y);
+  t = LP_Q1 / 13;
+  t = LP_Q1 / 11 + LP_MULQ(y2, t);
+  t = LP_Q1 / 9  + LP_MULQ(y2, t);
+  t = LP_Q1 / 7  + LP_MULQ(y2, t);
+  t = LP_Q1 / 5  + LP_MULQ(y2, t);
+  t = LP_Q1 / 3  + LP_MULQ(y2, t);
+  t = LP_Q1      + LP_MULQ(y2, t);
+  t = LP_MULQ(y, t) << 1;
+  return t - (eq_int64) k * LP_LN2;              /* ln(x) in Q30 */
+}
+
+static eq_int64 lp_exp_neg_q30(eq_int64 z)
+{
+  eq_int64 f, t;
+  int n = 0;
+  if (z > 0)
+    z = 0;
+  if (z < -((eq_int64)45 << LP_Q))
+    return 0;
+  while (z <= -LP_LN2) { z += LP_LN2; n++; }
+  if (n >= 31)
+    return 0;   /* result < 2^-31: sub-LSB in 0.16 (also avoids UB shift >= width) */
+  f = -z;
+  t = LP_Q1 - f / 7;
+  t = LP_Q1 - LP_MULQ(f / 6, t);
+  t = LP_Q1 - LP_MULQ(f / 5, t);
+  t = LP_Q1 - LP_MULQ(f / 4, t);
+  t = LP_Q1 - LP_MULQ(f / 3, t);
+  t = LP_Q1 - LP_MULQ(f / 2, t);
+  t = LP_Q1 - LP_MULQ(f, t);
+  return t >> n;                                 /* exp(z) in Q30 */
+}
+
+static uint32 lp_scale_factora(uint32 lp_range, int sample_rate)
+{
+  eq_int64 ln, arg, a;
+  int v;
+  /* degenerate (a0 == 0 or 1, or unset rate): no rescale possible/needed */
+  if (!(lp_range > 0 && lp_range < 65536 && sample_rate > 0))
+    return lp_range;
+  ln  = lp_ln_q30((eq_int64) lp_range << 14);              /* ln(a0), Q30 (< 0) */
+  arg = ((((eq_int64) 44100 << 16) / sample_rate) * ln) >> 16; /* (44100/fs)*ln(a0) */
+  a   = lp_exp_neg_q30(arg);                               /* a0 ^ (44100/fs), Q30 */
+  v   = (int) ((a >> 14) + ((a >> 13) & 1));               /* Q30 -> 0.16, rounded */
+  if (v < 0)     v = 0;
+  if (v > 65536) v = 65536;
+  return (uint32) v;
+}
+
+int audio_update(int16 *buffer)
+{
+  /* run sound chips until end of frame */
+  int size = sound_update(mcycles_vdp);
+
+  /* Mega CD sound hardware enabled ? */
+  if (snd.blips[1] && snd.blips[2])
+  {
+    /* sync PCM chip with other sound chips */
+    pcm_update(size);
+
+    /* read CD-DA samples */
+    cdd_update_audio(size);
+
+#ifdef ALIGN_SND
+    /* return an aligned number of samples if required */
+    size &= ALIGN_SND;
+#endif
+
+    if (audio_hard_disable)
+    {
+      blip_discard_samples_dirty(snd.blips[0], size);
+      blip_discard_samples_dirty(snd.blips[1], size);
+      blip_discard_samples_dirty(snd.blips[2], size);
+      if (config.fm_enhance)
+        blip_discard_samples_dirty(snd.blips[3], size);
+      return 0;
+    }
+
+    /* resample & mix FM/PSG, PCM & CD-DA streams to output buffer */
+    blip_mix_samples(snd.blips[0], snd.blips[1], snd.blips[2], buffer, size);
+  }
+  else
+  {
+#ifdef ALIGN_SND
+    /* return an aligned number of samples if required */
+    size &= ALIGN_SND;
+#endif
+
+    if (audio_hard_disable)
+    {
+      blip_discard_samples_dirty(snd.blips[0], size);
+      if (config.fm_enhance)
+        blip_discard_samples_dirty(snd.blips[3], size);
+      return 0;
+    }
+
+    /* resample FM/PSG mixed stream to output buffer */
+    blip_read_samples(snd.blips[0], buffer, size);
+  }
+
+  /* FM-only enhancement: read the isolated FM stream from its dedicated Blip
+     Buffer, post-process it, and mix it back into the output with a
+     deterministic integer add + clamp. When disabled, FM is already in the
+     output above and this block is skipped (bit-exact default). */
+  if (config.fm_enhance && snd.blips[3] && fm_scratch)
+  {
+    int n = size * 2;
+    int i;
+    int16 *o = buffer;
+    int16 *f = fm_scratch;
+
+    blip_read_samples(snd.blips[3], fm_scratch, size);
+    fm_enhance_block(fm_scratch, size);
+
+    for (i = 0; i < n; i++)
+    {
+      int s = o[i] + f[i];
+      if (s >  32767) s =  32767;
+      else if (s < -32768) s = -32768;
+      o[i] = (int16)s;
+    }
+  }
+
+  /* Audio filtering */
+  if (config.filter)
+  {
+    int samples = size;
+    int16 *out = buffer;
+    int32 l, r;
+
+    if (config.filter & 1)
+    {
+      /* single-pole low-pass filter (6 dB/octave)
+       *
+       * The feedback coefficient (config.lp_range) sets the cut-off only
+       * relative to the sample rate: y[n] = a*y[n-1] + (1-a)*x[n] has a
+       * cut-off fc = -ln(a)*fs/(2*pi), so re-using the same coefficient at
+       * a different rate would move the cut-off (e.g. ~2.2x higher at 96
+       * kHz than at 44.1 kHz, making the filter far too weak). The
+       * coefficient was historically tuned at 44.1 kHz, so rescale it to
+       * preserve that cut-off at any output rate:
+       *   a_fs = a_44100 ^ (44100 / fs)
+       * This is identity at 44.1 kHz and recomputed only when the range or
+       * sample rate changes (never per-sample). */
+      static uint32 cached_lp_range = 0;
+      static int    cached_rate     = 0;
+      static uint32 scaled_factora  = 0;
+      uint32 factora;
+      uint32 factorb;
+
+      if ((config.lp_range != cached_lp_range) || (snd.sample_rate != cached_rate))
+      {
+        cached_lp_range = config.lp_range;
+        cached_rate     = snd.sample_rate;
+        scaled_factora  = lp_scale_factora(config.lp_range, snd.sample_rate);
+      }
+
+      factora = scaled_factora;
+      factorb = 0x10000 - factora;
+
+      /* restore previous sample */
+      l = llp;
+      r = rrp;
+
+      do
+      {
+        /* apply low-pass filter */
+        l = l*factora + out[0]*factorb;
+        r = r*factora + out[1]*factorb;
+
+        /* 16.16 fixed point */
+        l >>= 16;
+        r >>= 16;
+
+        /* update sound buffer */
+        *out++ = l;
+        *out++ = r;
+      }
+      while (--samples);
+
+      /* save last samples for next frame */
+      llp = l;
+      rrp = r;
+    }
+    else if (config.filter & 2)
+    {
+      do
+      {
+        /* 3 Band EQ */
+        l = do_3band(&eq[0],out[0]);
+        r = do_3band(&eq[1],out[1]);
+
+        /* clipping (16-bit samples) */
+        if (l > 32767) l = 32767;
+        else if (l < -32768) l = -32768;
+        if (r > 32767) r = 32767;
+        else if (r < -32768) r = -32768;
+
+        /* update sound buffer */
+        *out++ = l;
+        *out++ = r;
+      }
+      while (--samples);
+    }
+  }
+
+  /* Mono output mixing */
+  if (config.mono)
+  {
+    int16 out;
+    int samples = size;
+    do
+    {
+      out = (buffer[0] + buffer[1]) / 2;
+      *buffer++ = out;
+      *buffer++ = out;
+    }
+    while (--samples);
+  }
+
+#ifdef LOGSOUND
+  error("%d samples returned\n\n",size);
+#endif
+
+  return size;
+}
+
+/****************************************************************
+ * Virtual System emulation
+ ****************************************************************/
+void system_init(void)
+{
+  gen_init();
+  io_init();
+  vdp_init();
+  render_init();
+  sound_init();
+}
+
+void system_reset(void)
+{
+  gen_reset(1);
+  io_reset();
+  render_reset();
+  vdp_reset();
+  sound_reset();
+  audio_reset();
+}
+
+void system_frame_gen(int do_skip)
+{
+  /* line counters */
+  int start, end, line;
+
+  /* reset frame cycle counter */
+  mcycles_vdp = 0;
+
+  /* reset VDP FIFO */
+  fifo_cycles[0] = 0;
+  fifo_cycles[1] = 0;
+  fifo_cycles[2] = 0;
+  fifo_cycles[3] = 0;
+
+  /* check if display setings have changed during previous frame */
+  if (bitmap.viewport.changed & 2)
+  {
+    /* interlaced modes */
+    int old_interlaced = interlaced;
+    interlaced = (reg[12] & 0x02) >> 1;
+
+    if (old_interlaced != interlaced)
+    {
+      /* double resolution mode */
+      im2_flag = ((reg[12] & 0x06) == 0x06);
+
+      /* reset field status flag */
+      odd_frame = interlaced;
+
+      /* video mode has changed */
+      bitmap.viewport.changed = 5;
+
+      /* update rendering mode */
+      if (reg[1] & 0x04)
+      {
+        if (im2_flag)
+        {
+          render_bg = (reg[11] & 0x04) ? render_bg_m5_im2_vs : render_bg_m5_im2;
+          render_obj = (reg[12] & 0x08) ? render_obj_m5_im2_ste : render_obj_m5_im2;
+        }
+        else
+        {
+          render_bg = (reg[11] & 0x04) ? render_bg_m5_vs : render_bg_m5;
+          render_obj = (reg[12] & 0x08) ? render_obj_m5_ste : render_obj_m5;
+        }
+      }
+    }
+    else
+    {
+      /* clear flag */
+      bitmap.viewport.changed &= ~2;
+    }
+
+    /* active screen height */
+    if (reg[1] & 0x04)
+    {
+      /* Mode 5 */
+      if (reg[1] & 0x08)
+      {
+        /* 240 active lines */
+        bitmap.viewport.h = 240;
+        bitmap.viewport.y = (config.overscan & 1) * 24 * vdp_pal;
+      }
+      else
+      {
+        /* 224 active lines */
+        bitmap.viewport.h = 224;
+        bitmap.viewport.y = (config.overscan & 1) * (8 + (24 * vdp_pal));
+      }
+    }
+    else
+    {
+      /* Mode 4 (192 active lines) */
+      bitmap.viewport.h = 192;
+      bitmap.viewport.y = (config.overscan & 1) * 24 * (vdp_pal + 1);
+    }
+
+    /* active screen width */
+    bitmap.viewport.w = 256 + ((reg[12] & 0x01) << 6);
+    bitmap.viewport.w += config.h40_extra_columns * 8;
+
+    /* check viewport changes */
+    if (bitmap.viewport.h != bitmap.viewport.oh)
+    {
+      bitmap.viewport.oh = bitmap.viewport.h;
+      bitmap.viewport.changed |= 1;
+    }
+  }
+
+  /* first line of overscan */
+  if (bitmap.viewport.y)
+  {
+    blank_line(bitmap.viewport.h, -bitmap.viewport.x, bitmap.viewport.w + 2*bitmap.viewport.x);
+  }
+  
+  /* clear DMA Busy, FIFO FULL & field flags */
+  status &= 0xFEED;
+
+  /* set VBLANK flag */
+  status |= 0x08;
+
+  /* check interlaced modes */
+  if (interlaced)
+  {
+    /* switch even/odd field flag */
+    odd_frame ^= 1;
+    status |= (odd_frame << 4);
+  }
+
+  /* run VDP DMA */
+  if (dma_length)
+  {
+    vdp_dma_update(0);
+  }
+
+  /* update 6-Buttons & Lightguns */
+  input_refresh();
+  
+  /* H-Int counter */
+  if (h_counter == 0)
+  {
+    /* Horizontal Interrupt is pending */
+    hint_pending = 0x10;
+    if (reg[0] & 0x10)
+    {
+      /* level 4 interrupt */
+      m68k_update_irq(4);
+    }
+  }
+
+  /* refresh inputs just before VINT (Warriors of Eternal Sun) */
+  osd_input_update();
+
+  /* VDP always starts after VBLANK so VINT cannot occur on first frame after a VDP reset (verified on real hardware) */
+  if (v_counter != bitmap.viewport.h)
+  {
+    /* reinitialize VCounter */
+    v_counter = bitmap.viewport.h;
+
+    /* delay between VBLANK flag & Vertical Interrupt (Dracula, OutRunners, VR Troopers) */
+    m68k_run(vint_cycle);
+    if (zstate == 1)
+    {
+      z80_run(vint_cycle);
+    }
+
+    /* set VINT flag */
+    status |= 0x80;
+   
+    /* Vertical Interrupt */
+    vint_pending = 0x20;
+    if (reg[1] & 0x20)
+    {
+      /* level 6 interrupt */
+      m68k_set_irq(6);
+    }
+
+    /* assert Z80 interrupt */
+    Z80.irq_state = ASSERT_LINE;
+  }
+
+  /* run 68k & Z80 until end of line */
+  m68k_run(MCYCLES_PER_LINE);
+  if (zstate == 1)
+  {
+    z80_run(MCYCLES_PER_LINE);
+  }
+
+  /* Z80 interrupt is cleared at the end of the line */
+  Z80.irq_state = CLEAR_LINE;
+
+  /* run SVP chip */
+  if (svp)
+  {
+    ssp1601_run(SVP_cycles);
+  }
+
+  /* update VDP cycle count */
+  mcycles_vdp = MCYCLES_PER_LINE;
+
+  /* initialize line count */
+  line = bitmap.viewport.h + 1; 
+
+  /* initialize overscan area */
+  start = lines_per_frame - bitmap.viewport.y;
+  end = bitmap.viewport.h + bitmap.viewport.y;
+
+  /* Vertical Blanking */
+  do
+  {
+    /* update VCounter */
+    v_counter = line;
+
+    /* render overscan */
+    if ((line < end) || (line >= start))
+    {
+      blank_line(line, -bitmap.viewport.x, bitmap.viewport.w + 2*bitmap.viewport.x);
+    }
+
+    /* update 6-Buttons & Lightguns */
+    input_refresh();
+
+    /* run 68k & Z80 until end of line */
+    m68k_run(mcycles_vdp + MCYCLES_PER_LINE);
+    if (zstate == 1)
+    {
+      z80_run(mcycles_vdp + MCYCLES_PER_LINE);
+    }
+
+    /* run SVP chip */
+    if (svp)
+    {
+      ssp1601_run(SVP_cycles);
+    }
+
+    /* update VDP cycle count */
+    mcycles_vdp += MCYCLES_PER_LINE;
+  }
+  while (++line < (lines_per_frame - 1));
+  
+  /* update VCounter */
+  v_counter = line;
+
+  /* last line of overscan */
+  if (bitmap.viewport.y)
+  {
+    blank_line(line, -bitmap.viewport.x, bitmap.viewport.w + 2*bitmap.viewport.x);
+  }
+
+  /* reload H-Int counter */
+  h_counter = reg[10];
+  
+  /* clear VBLANK flag */
+  status &= ~0x08;
+ 
+  /* run VDP DMA */
+  if (dma_length)
+  {
+    vdp_dma_update(mcycles_vdp);
+  }
+
+  /* parse first line of sprites */
+  if (reg[1] & 0x40)
+  {
+    parse_satb(-1);
+  }
+
+  /* update 6-Buttons & Lightguns */
+  input_refresh();
+
+  /* run 68k & Z80 until end of line */
+  m68k_run(mcycles_vdp + MCYCLES_PER_LINE);
+  if (zstate == 1)
+  {
+    z80_run(mcycles_vdp + MCYCLES_PER_LINE);
+  }
+
+  /* run SVP chip */
+  if (svp)
+  {
+    ssp1601_run(SVP_cycles);
+  }
+
+  /* update VDP cycle count */
+  mcycles_vdp += MCYCLES_PER_LINE;
+
+  /* reset line count */
+  line = 0;
+  
+  /* Active Display */
+  do
+  {
+    /* update VCounter */
+    v_counter = line;
+
+    /* run VDP DMA */
+    if (dma_length)
+    {
+      vdp_dma_update(mcycles_vdp);
+    }
+
+    /* render scanline */
+    if (!do_skip)
+    {
+      render_line(line);
+    }
+
+    /* update 6-Buttons & Lightguns */
+    input_refresh();
+
+    /* H-Int counter */
+    if (h_counter == 0)
+    {
+      /* reload H-Int counter */
+      h_counter = reg[10];
+      
+      /* Horizontal Interrupt is pending */
+      hint_pending = 0x10;
+      if (reg[0] & 0x10)
+      {
+        /* level 4 interrupt */
+        m68k_update_irq(4);
+      }
+    }
+    else
+    {
+      /* decrement H-Int counter */
+      h_counter--;
+    }
+
+    /* run 68k & Z80 until end of line */
+    m68k_run(mcycles_vdp + MCYCLES_PER_LINE);
+    if (zstate == 1)
+    {
+      z80_run(mcycles_vdp + MCYCLES_PER_LINE);
+    }
+
+    /* run SVP chip */
+    if (svp)
+    {
+      ssp1601_run(SVP_cycles);
+    }
+
+    /* update VDP cycle count */
+    mcycles_vdp += MCYCLES_PER_LINE;
+  }
+  while (++line < bitmap.viewport.h);
+
+  /* check viewport changes */
+  if (bitmap.viewport.w != bitmap.viewport.ow)
+  {
+    bitmap.viewport.ow = bitmap.viewport.w;
+    bitmap.viewport.changed |= 1;
+  }
+
+  /* adjust timings for next frame */
+  input_end_frame(mcycles_vdp);
+  m68k.refresh_cycles -= mcycles_vdp;
+  m68k.cycles -= mcycles_vdp;
+  Z80.cycles -= mcycles_vdp;
+  dma_endCycles = 0;
+}
+
+void system_frame_scd(int do_skip)
+{
+  /* line counters */
+  int start, end, line;
+
+  /* reset frame cycle counter */
+  mcycles_vdp = 0;
+  scd.cycles = 0;
+
+  /* reset VDP FIFO */
+  fifo_cycles[0] = 0;
+  fifo_cycles[1] = 0;
+  fifo_cycles[2] = 0;
+  fifo_cycles[3] = 0;
+
+  /* check if display setings have changed during previous frame */
+  if (bitmap.viewport.changed & 2)
+  {
+    /* interlaced modes */
+    int old_interlaced = interlaced;
+    interlaced = (reg[12] & 0x02) >> 1;
+
+    if (old_interlaced != interlaced)
+    {
+      /* double resolution mode */
+      im2_flag = ((reg[12] & 0x06) == 0x06);
+
+      /* reset field status flag */
+      odd_frame = interlaced;
+
+      /* video mode has changed */
+      bitmap.viewport.changed = 5;
+
+      /* update rendering mode */
+      if (reg[1] & 0x04)
+      {
+        if (im2_flag)
+        {
+          render_bg = (reg[11] & 0x04) ? render_bg_m5_im2_vs : render_bg_m5_im2;
+          render_obj = (reg[12] & 0x08) ? render_obj_m5_im2_ste : render_obj_m5_im2;
+        }
+        else
+        {
+          render_bg = (reg[11] & 0x04) ? render_bg_m5_vs : render_bg_m5;
+          render_obj = (reg[12] & 0x08) ? render_obj_m5_ste : render_obj_m5;
+        }
+      }
+    }
+    else
+    {
+      /* clear flag */
+      bitmap.viewport.changed &= ~2;
+    }
+
+    /* active screen height */
+    if (reg[1] & 0x04)
+    {
+      /* Mode 5 */
+      if (reg[1] & 0x08)
+      {
+        /* 240 active lines */
+        bitmap.viewport.h = 240;
+        bitmap.viewport.y = (config.overscan & 1) * 24 * vdp_pal;
+      }
+      else
+      {
+        /* 224 active lines */
+        bitmap.viewport.h = 224;
+        bitmap.viewport.y = (config.overscan & 1) * (8 + (24 * vdp_pal));
+      }
+    }
+    else
+    {
+      /* Mode 4 (192 active lines) */
+      bitmap.viewport.h = 192;
+      bitmap.viewport.y = (config.overscan & 1) * 24 * (vdp_pal + 1);
+    }
+
+    /* active screen width */
+    bitmap.viewport.w = 256 + ((reg[12] & 0x01) << 6);
+    bitmap.viewport.w += config.h40_extra_columns * 8;
+
+    /* check viewport changes */
+    if (bitmap.viewport.h != bitmap.viewport.oh)
+    {
+      bitmap.viewport.oh = bitmap.viewport.h;
+      bitmap.viewport.changed |= 1;
+    }
+  }
+
+  /* first line of overscan */
+  if (bitmap.viewport.y)
+  {
+    blank_line(bitmap.viewport.h, -bitmap.viewport.x, bitmap.viewport.w + 2*bitmap.viewport.x);
+  }
+  
+  /* clear DMA Busy, FIFO FULL & field flags */
+  status &= 0xFEED;
+
+  /* set VBLANK flag */
+  status |= 0x08;
+
+  /* check interlaced modes */
+  if (interlaced)
+  {
+    /* switch even/odd field flag */
+    odd_frame ^= 1;
+    status |= (odd_frame << 4);
+  }
+
+  /* run VDP DMA */
+  if (dma_length)
+  {
+    vdp_dma_update(0);
+  }
+
+  /* update 6-Buttons & Lightguns */
+  input_refresh();
+
+  /* H-Int counter */
+  if (h_counter == 0)
+  {
+    /* Horizontal Interrupt is pending */
+    hint_pending = 0x10;
+    if (reg[0] & 0x10)
+    {
+      /* level 4 interrupt */
+      m68k_update_irq(4);
+    }
+  }
+
+  /* refresh inputs just before VINT */
+  osd_input_update();
+
+  /* VDP always starts after VBLANK so VINT cannot occur on first frame after a VDP reset (verified on real hardware) */
+  if (v_counter != bitmap.viewport.h)
+  {
+    /* reinitialize VCounter */
+    v_counter = bitmap.viewport.h;
+
+    /* delay between VBLANK flag & Vertical Interrupt (Dracula, OutRunners, VR Troopers) */
+    m68k_run(vint_cycle);
+    if (zstate == 1)
+    {
+      z80_run(vint_cycle);
+    }
+
+    /* set VINT flag */
+    status |= 0x80;
+
+    /* Vertical Interrupt */
+    vint_pending = 0x20;
+    if (reg[1] & 0x20)
+    {
+      /* level 6 interrupt */
+      m68k_set_irq(6);
+    }
+
+    /* assert Z80 interrupt */
+    Z80.irq_state = ASSERT_LINE;
+  }
+
+  /* run both 68k & CD hardware until end of line */
+  scd_update(MCYCLES_PER_LINE);
+
+  /* run Z80 until end of line */
+  if (zstate == 1)
+  {
+    z80_run(MCYCLES_PER_LINE);
+  }
+
+  /* Z80 interrupt is cleared at the end of the line */
+  Z80.irq_state = CLEAR_LINE;
+
+  /* update VDP cycle count */
+  mcycles_vdp = MCYCLES_PER_LINE;
+
+  /* initialize line count */
+  line = bitmap.viewport.h + 1; 
+
+  /* initialize overscan area */
+  start = lines_per_frame - bitmap.viewport.y;
+  end = bitmap.viewport.h + bitmap.viewport.y;
+
+  /* Vertical Blanking */
+  do
+  {
+    /* update VCounter */
+    v_counter = line;
+
+    /* render overscan */
+    if ((line < end) || (line >= start))
+    {
+      blank_line(line, -bitmap.viewport.x, bitmap.viewport.w + 2*bitmap.viewport.x);
+    }
+
+    /* update 6-Buttons & Lightguns */
+    input_refresh();
+
+    /* run both 68k & CD hardware until end of line */
+    scd_update(mcycles_vdp + MCYCLES_PER_LINE);
+
+    /* run Z80 until end of line */
+    if (zstate == 1)
+    {
+      z80_run(mcycles_vdp + MCYCLES_PER_LINE);
+    }
+
+    /* update VDP cycle count */
+    mcycles_vdp += MCYCLES_PER_LINE;
+  }
+  while (++line < (lines_per_frame - 1));
+  
+  /* update VCounter */
+  v_counter = line;
+
+  /* last line of overscan */
+  if (bitmap.viewport.y)
+  {
+    blank_line(line, -bitmap.viewport.x, bitmap.viewport.w + 2*bitmap.viewport.x);
+  }
+
+  /* reload H-Int counter */
+  h_counter = reg[10];
+  
+  /* clear VBLANK flag */
+  status &= ~0x08;
+ 
+  /* run VDP DMA */
+  if (dma_length)
+  {
+    vdp_dma_update(mcycles_vdp);
+  }
+
+  /* parse first line of sprites */
+  if (reg[1] & 0x40)
+  {
+    parse_satb(-1);
+  }
+
+  /* update 6-Buttons & Lightguns */
+  input_refresh();
+
+  /* run both 68k & CD hardware until end of line */
+  scd_update(mcycles_vdp + MCYCLES_PER_LINE);
+
+  /* run Z80 until end of line */
+  if (zstate == 1)
+  {
+    z80_run(mcycles_vdp + MCYCLES_PER_LINE);
+  }
+
+  /* update VDP cycle count */
+  mcycles_vdp += MCYCLES_PER_LINE;
+
+  /* reset line count */
+  line = 0;
+  
+  /* Active Display */
+  do
+  {
+    /* update VCounter */
+    v_counter = line;
+
+    /* run VDP DMA */
+    if (dma_length)
+    {
+      vdp_dma_update(mcycles_vdp);
+    }
+
+    /* render scanline */
+    if (!do_skip)
+    {
+      render_line(line);
+    }
+    
+    /* update 6-Buttons & Lightguns */
+    input_refresh();
+
+    /* H-Int counter */
+    if (h_counter == 0)
+    {
+      /* reload H-Int counter */
+      h_counter = reg[10];
+      
+      /* Horizontal Interrupt is pending */
+      hint_pending = 0x10;
+      if (reg[0] & 0x10)
+      {
+        /* level 4 interrupt */
+        m68k_update_irq(4);
+      }
+    }
+    else
+    {
+      /* decrement H-Int counter */
+      h_counter--;
+    }
+
+    /* run both 68k & CD hardware until end of line */
+    scd_update(mcycles_vdp + MCYCLES_PER_LINE);
+
+    /* run Z80 until end of line */
+    if (zstate == 1)
+    {
+      z80_run(mcycles_vdp + MCYCLES_PER_LINE);
+    }
+
+    /* update VDP cycle count */
+    mcycles_vdp += MCYCLES_PER_LINE;
+  }
+  while (++line < bitmap.viewport.h);
+
+  /* check viewport changes */
+  if (bitmap.viewport.w != bitmap.viewport.ow)
+  {
+    bitmap.viewport.ow = bitmap.viewport.w;
+    bitmap.viewport.changed |= 1;
+  }
+  
+  /* adjust timings for next frame */
+  scd_end_frame(scd.cycles);
+  input_end_frame(mcycles_vdp);
+  m68k.refresh_cycles -= mcycles_vdp;
+  m68k.cycles -= mcycles_vdp;
+  Z80.cycles -= mcycles_vdp;
+  dma_endCycles = 0;
+}
+
+void system_frame_sms(int do_skip)
+{
+  /* line counter */
+  int start, end, line;
+
+  /* reset frame cycle count */
+  mcycles_vdp = 0;
+
+  /* reset VDP FIFO */
+  fifo_cycles[0] = 0;
+  fifo_cycles[1] = 0;
+  fifo_cycles[2] = 0;
+  fifo_cycles[3] = 0;
+
+  /* check if display settings has changed during previous frame */
+  if (bitmap.viewport.changed & 2)
+  {
+    bitmap.viewport.changed &= ~2;
+
+    if (system_hw & SYSTEM_MD)
+    {
+      /* interlaced modes */
+      int old_interlaced = interlaced;
+      interlaced = (reg[12] & 0x02) >> 1;
+
+      if (old_interlaced != interlaced)
+      {
+        /* double resolution mode */
+        im2_flag = ((reg[12] & 0x06) == 0x06);
+
+        /* reset field status flag */
+        odd_frame = interlaced;
+
+        /* video mode has changed */
+        bitmap.viewport.changed = 5;
+
+        /* update rendering mode */
+        if (reg[1] & 0x04)
+        {
+          if (im2_flag)
+          {
+            render_bg = (reg[11] & 0x04) ? render_bg_m5_im2_vs : render_bg_m5_im2;
+            render_obj = (reg[12] & 0x08) ? render_obj_m5_im2_ste : render_obj_m5_im2;
+          }
+          else
+          {
+            render_bg = (reg[11] & 0x04) ? render_bg_m5_vs : render_bg_m5;
+            render_obj = (reg[12] & 0x08) ? render_obj_m5_ste : render_obj_m5;
+          }
+        }
+      }
+
+      /* active screen height */
+      if (reg[1] & 0x04)
+      {
+        /* Mode 5 */
+        if (reg[1] & 0x08)
+        {
+          /* 240 active lines */
+          bitmap.viewport.h = 240;
+          bitmap.viewport.y = (config.overscan & 1) * 24 * vdp_pal;
+        }
+        else
+        {
+          /* 224 active lines */
+          bitmap.viewport.h = 224;
+          bitmap.viewport.y = (config.overscan & 1) * (8 + (24 * vdp_pal));
+        }
+      }
+      else
+      {
+        bitmap.viewport.h = 192;
+        bitmap.viewport.y = (config.overscan & 1) * 24 * (vdp_pal + 1);
+      }
+    }
+    else
+    {
+      /* check for VDP extended modes */
+      int mode = (reg[0] & 0x06) | (reg[1] & 0x18);
+
+      /* update active height */
+      if (mode == 0x0E)
+      {
+        bitmap.viewport.h = 240;
+      }
+      else if (mode == 0x16)
+      {
+        bitmap.viewport.h = 224;
+      }
+      else
+      {
+        bitmap.viewport.h = 192;
+      }
+
+      /* update vertical overscan */
+      if (config.overscan & 1)
+      {
+        bitmap.viewport.y = (240 + 48*vdp_pal - bitmap.viewport.h) >> 1;
+      }
+      else
+      {
+        if ((system_hw == SYSTEM_GG) && !config.gg_extra)
+        {
+          /* Display area reduced to 160x144 */
+          bitmap.viewport.y = (144 - bitmap.viewport.h) / 2;
+        }
+        else
+        {
+          bitmap.viewport.y = 0;
+        }
+      }
+    }
+
+    /* active screen width */
+    bitmap.viewport.w = 256 + ((reg[12] & 0x01) << 6);
+
+    /* check viewport changes */
+    if (bitmap.viewport.h != bitmap.viewport.oh)
+    {
+      bitmap.viewport.oh = bitmap.viewport.h;
+      bitmap.viewport.changed |= 1;
+    }
+  }
+
+  /* initialize VCounter */
+  v_counter = bitmap.viewport.h;
+
+  /* first line of overscan */
+  if (bitmap.viewport.y > 0)
+  {
+    blank_line(v_counter, -bitmap.viewport.x, bitmap.viewport.w + 2*bitmap.viewport.x);
+  }
+
+  /* Mega Drive VDP specific */
+  if (system_hw & SYSTEM_MD)
+  {
+    /* clear DMA Busy & field flags */
+    status &= 0xED;
+
+    /* set VBLANK flag */
+    status |= 0x08;
+
+    /* interlaced modes only */
+    if (interlaced)
+    {
+      /* switch even/odd field flag */
+      odd_frame ^= 1;
+      status |= (odd_frame << 4);
+    }
+
+    /* run VDP DMA */
+    if (dma_length)
+    {
+      vdp_dma_update(0);
+    }
+  }
+
+  /* update 6-Buttons & Lightguns */
+  input_refresh();
+
+  /* H-Int counter */
+  if (h_counter == 0)
+  {
+    /* Horizontal Interrupt is pending */
+    hint_pending = 0x10;
+    if (reg[0] & 0x10)
+    {
+      /* Cycle-accurate HINT */
+      /* IRQ line is latched between instructions, during instruction last cycle.       */
+      /* This means that if Z80 cycle count is exactly a multiple of MCYCLES_PER_LINE,  */
+      /* interrupt should be triggered AFTER the next instruction.                      */
+      if ((Z80.cycles % MCYCLES_PER_LINE) == 0)
+      {
+        z80_run(Z80.cycles + 1);
+      }
+
+      /* Z80 interrupt */
+      Z80.irq_state = ASSERT_LINE;
+    }
+  }
+
+  /* refresh inputs just before VINT */
+  osd_input_update();
+
+  /* run Z80 until end of line */
+  z80_run(MCYCLES_PER_LINE);
+
+  /* make sure VINT flag was not read (then cleared) by last instruction */
+  if (v_counter == bitmap.viewport.h)
+  {
+    /* Set VINT flag */
+    status |= 0x80;
+
+    /* Vertical Interrupt */
+    vint_pending = 0x20;
+    if (reg[1] & 0x20)
+    {
+      Z80.irq_state = ASSERT_LINE;
+    }
+  }
+
+  /* update VDP cycle count */
+  mcycles_vdp = MCYCLES_PER_LINE;
+
+  /* initialize line count */
+  line = bitmap.viewport.h + 1;
+
+  /* initialize overscan area */
+  start = lines_per_frame - bitmap.viewport.y;
+  end   = bitmap.viewport.h + bitmap.viewport.y;
+
+  /* Vertical Blanking */
+  do
+  {
+    /* update VCounter */
+    v_counter = line;
+
+    /* render overscan */
+    if ((line < end) || (line >= start))
+    {
+      /* Master System & Game Gear VDP specific */
+      if ((system_hw < SYSTEM_MD) && (line > (lines_per_frame - 16)))
+      {
+        /* Sprites are still processed during top border */
+        if (reg[1] & 0x40)
+        {
+          render_obj((line - lines_per_frame) & 1);
+        }
+        
+        /* Sprites pre-processing occurs even when display is disabled */
+        parse_satb(line - lines_per_frame);
+      }
+
+      blank_line(line, -bitmap.viewport.x, bitmap.viewport.w + 2*bitmap.viewport.x);
+    }
+
+    /* update 6-Buttons & Lightguns */
+    input_refresh();
+
+    /* run Z80 until end of line */
+    z80_run(mcycles_vdp + MCYCLES_PER_LINE);
+
+    /* update VDP cycle count */
+    mcycles_vdp += MCYCLES_PER_LINE;
+  }
+  while (++line < (lines_per_frame - 1));
+
+  /* update VCounter */
+  v_counter = line;
+
+  /* last line of overscan */
+  if (bitmap.viewport.y > 0)
+  {
+    /* Master System & Game Gear VDP specific */
+    if (system_hw < SYSTEM_MD)
+    {
+      /* Sprites are still processed during top border */
+      if (reg[1] & 0x40)
+      {
+        render_obj(1);
+      }
+    }
+
+    blank_line(line, -bitmap.viewport.x, bitmap.viewport.w + 2*bitmap.viewport.x);
+  }
+
+  /* reload H-Int counter */
+  h_counter = reg[10];
+
+  /* Detect pause button input (in Game Gear Mode, NMI is not generated) */
+  if (system_hw != SYSTEM_GG)
+  {
+    if (input.pad[0] & INPUT_START)
+    {
+      /* NMI is edge-triggered */
+      if (!pause_b)
+      {
+        pause_b = 1;
+        z80_set_nmi_line(ASSERT_LINE);
+        z80_set_nmi_line(CLEAR_LINE);
+      }
+    }
+    else
+    {
+      pause_b = 0;
+    }
+  }
+
+  /* 3-D glasses faking: skip rendering of left lens frame */
+  do_skip |= (work_ram[0x1ffb] & cart.special & HW_3D_GLASSES);
+
+  /* Mega Drive VDP specific */
+  if (system_hw & SYSTEM_MD)
+  {
+    /* clear VBLANK flag */
+    status &= ~0x08;
+
+    /* run VDP DMA */
+    if (dma_length)
+    {
+      vdp_dma_update(mcycles_vdp);
+    }
+    
+    /* parse first line of sprites */
+    if (reg[1] & 0x40)
+    {
+      parse_satb(-1);
+    }
+  }
+
+  /* Master System & Game Gear VDP specific */
+  else
+  {    
+    /* Sprites pre-processing occurs even when display is disabled */
+    parse_satb(-1);
+  }
+
+  /* update 6-Buttons & Lightguns */
+  input_refresh();
+
+  /* run Z80 until end of line */
+  z80_run(mcycles_vdp + MCYCLES_PER_LINE);
+
+  /* update VDP cycle count */
+  mcycles_vdp += MCYCLES_PER_LINE;
+
+  /* latch Vertical Scroll register */
+  vscroll = reg[9];
+  
+  /* reset line count */
+  line = 0;
+
+  /* Active Display */
+  do
+  {
+    /* run VDP DMA (Mega Drive VDP specific) */
+    if (dma_length)
+    {
+      vdp_dma_update(mcycles_vdp);
+    }
+
+    /* make sure that line has not already been rendered */
+    if (v_counter != line)
+    {
+      /* update VCounter */
+      v_counter = line;
+
+      /* render scanline */
+      if (!do_skip)
+      {
+        render_line(line);
+      }
+    }
+
+    /* update 6-Buttons & Lightguns */
+    input_refresh();
+
+    /* H-Int counter */
+    if (h_counter == 0)
+    {
+      /* reload H-Int counter */
+      h_counter = reg[10];
+      
+      /* Horizontal Interrupt is pending */
+      hint_pending = 0x10;
+      if (reg[0] & 0x10)
+      {
+        /* Cycle-accurate HINT */
+        /* IRQ line is latched between instructions, during instruction last cycle.       */
+        /* This means that if Z80 cycle count is exactly a multiple of MCYCLES_PER_LINE,  */
+        /* interrupt should be triggered AFTER the next instruction.                      */
+        if ((Z80.cycles % MCYCLES_PER_LINE) == 0)
+        {
+          z80_run(Z80.cycles + 1);
+        }
+
+        /* assert Z80 interrupt */
+        Z80.irq_state = ASSERT_LINE;
+      }
+    }
+    else
+    {
+      /* decrement H-Int counter */
+      h_counter--;
+    }
+
+    /* run Z80 until end of line */
+    z80_run(mcycles_vdp + MCYCLES_PER_LINE);
+
+    /* update VDP cycle count */
+    mcycles_vdp += MCYCLES_PER_LINE;
+  }
+  while (++line < bitmap.viewport.h);
+
+  /* check viewport changes */
+  if (bitmap.viewport.w != bitmap.viewport.ow)
+  {
+    bitmap.viewport.ow = bitmap.viewport.w;
+    bitmap.viewport.changed |= 1;
+  }
+
+  /* adjust timings for next frame */
+  input_end_frame(mcycles_vdp);
+  Z80.cycles -= mcycles_vdp;
+}

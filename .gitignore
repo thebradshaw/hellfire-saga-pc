@@ -1,0 +1,17 @@
+# Build output
+/build*/
+*.o
+*.obj
+*.exe
+*.dll
+
+# Game data never goes in this repo: players supply their own ROM.
+*.gen
+*.bin
+*.md.rom
+*.smd
+*.srm
+*.sms
+*.zip
+*.7z
+*.ppm
