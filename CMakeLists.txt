@@ -50,6 +50,28 @@ endif()
 find_package(SDL2 REQUIRED)
 
 # ---------------------------------------------------------------------------
+# TinyCC (LGPL 2.1, see third_party/tinycc): compiles the recompiled C in
+# memory on the player's PC. Built as its own library for x86-64; the target
+# (Linux ELF or Windows PE) follows the host. Elsewhere the game falls back to
+# the emulated CPU.
+# ---------------------------------------------------------------------------
+set(HF_TCC_LIB "")
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|amd64")
+  add_library(libtcc STATIC third_party/tinycc/libtcc.c)
+  target_include_directories(libtcc PUBLIC ${CMAKE_SOURCE_DIR}/third_party/tinycc)
+  target_compile_definitions(libtcc PRIVATE ONE_SOURCE=1 CONFIG_TCC_PREDEFS=1
+    CONFIG_TCC_BACKTRACE=0 CONFIG_TCC_BCHECK=0 CONFIG_TCC_SEMLOCK=0)
+  if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(libtcc PRIVATE -O2 -fno-strict-aliasing -w)
+  endif()
+  target_compile_definitions(libtcc INTERFACE HF_HAVE_LIBTCC)
+  if(UNIX)
+    target_link_libraries(libtcc PUBLIC ${CMAKE_DL_LIBS} m)
+  endif()
+  set(HF_TCC_LIB libtcc)
+endif()
+
+# ---------------------------------------------------------------------------
 # Recompiler: 68000 -> C, run on the player's PC (src/recomp)
 # ---------------------------------------------------------------------------
 set(RT_EMBED ${CMAKE_BINARY_DIR}/generated/rt_embed.inc)

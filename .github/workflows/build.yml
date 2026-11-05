@@ -26,6 +26,7 @@ jobs:
           cp build/hellfire dist/hellfire-saga-pc/
           cp -r assets dist/hellfire-saga-pc/
           cp README.md third_party/gpgx-wide/LICENSE.txt dist/hellfire-saga-pc/
+          cp third_party/tinycc/COPYING dist/hellfire-saga-pc/TinyCC-COPYING.txt
       - uses: actions/upload-artifact@v4
         with:
           name: hellfire-saga-pc-linux-x64
@@ -54,6 +55,7 @@ jobs:
           cp build-win/hellfire.exe build-win/SDL2.dll dist/hellfire-saga-pc/
           cp -r assets dist/hellfire-saga-pc/
           cp README.md third_party/gpgx-wide/LICENSE.txt dist/hellfire-saga-pc/
+          cp third_party/tinycc/COPYING dist/hellfire-saga-pc/TinyCC-COPYING.txt
       - uses: actions/upload-artifact@v4
         with:
           name: hellfire-saga-pc-windows-x64
