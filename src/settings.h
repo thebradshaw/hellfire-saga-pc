@@ -19,6 +19,7 @@ typedef struct
   int  fps120;       /* 1 = present at 120 Hz (each game frame shown twice) */
   int  invincible;   /* 1 = nothing hurts you; pits still kill */
   int  crt;          /* CrtMode */
+  int  native;       /* 1 = run the recompiled (native) game code */
 } Settings;
 
 extern Settings settings;

@@ -3,6 +3,7 @@ name: Build
 on:
   push:
     branches: [main]
+    tags: ['v*']
   pull_request:
   workflow_dispatch:
 
@@ -26,6 +27,7 @@ jobs:
           cp build/hellfire dist/hellfire-saga-pc/
           cp -r assets dist/hellfire-saga-pc/
           cp README.md third_party/gpgx-wide/LICENSE.txt dist/hellfire-saga-pc/
+          cp third_party/tinycc/COPYING dist/hellfire-saga-pc/TinyCC-COPYING.txt
       - uses: actions/upload-artifact@v4
         with:
           name: hellfire-saga-pc-linux-x64
@@ -54,7 +56,35 @@ jobs:
           cp build-win/hellfire.exe build-win/SDL2.dll dist/hellfire-saga-pc/
           cp -r assets dist/hellfire-saga-pc/
           cp README.md third_party/gpgx-wide/LICENSE.txt dist/hellfire-saga-pc/
+          cp third_party/tinycc/COPYING dist/hellfire-saga-pc/TinyCC-COPYING.txt
       - uses: actions/upload-artifact@v4
         with:
           name: hellfire-saga-pc-windows-x64
           path: dist/
+
+  release:
+    # A pushed tag like v0.2.0 publishes both builds as a GitHub release.
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [linux, windows]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Zip builds
+        run: |
+          TAG=${GITHUB_REF_NAME}
+          (cd artifacts/hellfire-saga-pc-windows-x64 && zip -r ../../hellfire-saga-pc-${TAG}-windows-x64.zip hellfire-saga-pc)
+          (cd artifacts/hellfire-saga-pc-linux-x64 && chmod +x hellfire-saga-pc/hellfire && tar czf ../../hellfire-saga-pc-${TAG}-linux-x64.tar.gz hellfire-saga-pc)
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            --title "HellFire Saga PC ${GITHUB_REF_NAME}" \
+            --notes-file .github/RELEASE_NOTES.md \
+            hellfire-saga-pc-${GITHUB_REF_NAME}-windows-x64.zip \
+            hellfire-saga-pc-${GITHUB_REF_NAME}-linux-x64.tar.gz

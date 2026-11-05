@@ -52,4 +52,7 @@ PauseResult pause_event(MenuAction a);
 PauseResult pause_mouse(int x, int y, int button, int canvas_w, int canvas_h);
 void        pause_draw(Canvas *c);
 
+/* Shown next to the "Game code" option, e.g. "Native: 98% of code". */
+extern char launcher_native_status[64];
+
 #endif

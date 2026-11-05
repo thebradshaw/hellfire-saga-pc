@@ -4,6 +4,7 @@
 #include "shared.h"
 #include "emu.h"
 #include "hf_file.h"
+#include "native.h"
 
 #define BITMAP_W 720
 #define BITMAP_H 576
@@ -172,6 +173,7 @@ int emu_load(const char *rom_path, const char *sram_path, int extra_columns)
 
 void emu_unload(void)
 {
+  native_stop();
   if (!loaded) return;
   sram_write();
   audio_shutdown();
@@ -235,4 +237,5 @@ void emu_rom_write8(uint32_t address, uint8_t value)
 #else
   cart.rom[address] = value;
 #endif
+  native_rom_changed(address, 1);
 }

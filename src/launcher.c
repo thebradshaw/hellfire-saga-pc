@@ -100,14 +100,16 @@ void launcher_offer_rom(const char *path)
 
 /* ---- menus ---------------------------------------------------------------- */
 
+char launcher_native_status[64];
+
 static const char *main_items[] = { "Play", "Soundtrack", "Options", "Credits", "Quit" };
 #define MAIN_COUNT 5
 
-#define OPT_COUNT 9
+#define OPT_COUNT 10
 
 static const char *option_label(int i)
 {
-  static const char *labels[] = { "Screen", "Display", "Scaling", "CRT effect", "Frame rate", "VSync", "Invincible", "Volume", "Back" };
+  static const char *labels[] = { "Screen", "Display", "Scaling", "CRT effect", "Frame rate", "VSync", "Invincible", "Game code", "Volume", "Back" };
   return labels[i];
 }
 
@@ -123,7 +125,9 @@ static void option_value(int i, char *buf, size_t n)
     case 4: snprintf(buf, n, "%s", settings.fps120 ? "120 FPS" : "60 FPS"); break;
     case 5: snprintf(buf, n, "%s", settings.vsync ? "On" : "Off"); break;
     case 6: snprintf(buf, n, "%s", settings.invincible ? "On (spikes, pits and crushing still hurt)" : "Off"); break;
-    case 7: snprintf(buf, n, "%d%%", settings.volume); break;
+    case 7: snprintf(buf, n, "%s", !settings.native ? "Emulated 68000" :
+                                   launcher_native_status[0] ? launcher_native_status : "Native (recompiled C)"); break;
+    case 8: snprintf(buf, n, "%d%%", settings.volume); break;
     default: buf[0] = 0; break;
   }
 }
@@ -139,7 +143,8 @@ static LauncherResult change_option(int i, int dir)
     case 4: settings.fps120 = !settings.fps120; break;
     case 5: settings.vsync = !settings.vsync; settings_save(); return LAUNCH_VIDEO_CHANGED;
     case 6: settings.invincible = !settings.invincible; break;
-    case 7:
+    case 7: settings.native = !settings.native; break;
+    case 8:
       settings.volume += dir * 10;
       if (settings.volume < 0)   settings.volume = 0;
       if (settings.volume > 100) settings.volume = 100;

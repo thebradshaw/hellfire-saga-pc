@@ -50,6 +50,49 @@ endif()
 find_package(SDL2 REQUIRED)
 
 # ---------------------------------------------------------------------------
+# TinyCC (LGPL 2.1, see third_party/tinycc): compiles the recompiled C in
+# memory on the player's PC. Built as its own library for x86-64; the target
+# (Linux ELF or Windows PE) follows the host. Elsewhere the game falls back to
+# the emulated CPU.
+# ---------------------------------------------------------------------------
+set(HF_TCC_LIB "")
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|amd64")
+  add_library(libtcc STATIC third_party/tinycc/libtcc.c)
+  target_include_directories(libtcc PUBLIC ${CMAKE_SOURCE_DIR}/third_party/tinycc)
+  target_compile_definitions(libtcc PRIVATE ONE_SOURCE=1 CONFIG_TCC_PREDEFS=1
+    CONFIG_TCC_BACKTRACE=0 CONFIG_TCC_BCHECK=0 CONFIG_TCC_SEMLOCK=0)
+  if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(libtcc PRIVATE -O2 -fno-strict-aliasing -w)
+  endif()
+  target_compile_definitions(libtcc INTERFACE HF_HAVE_LIBTCC)
+  if(UNIX)
+    target_link_libraries(libtcc PUBLIC ${CMAKE_DL_LIBS} m)
+  endif()
+  set(HF_TCC_LIB libtcc)
+endif()
+
+# ---------------------------------------------------------------------------
+# Recompiler: 68000 -> C, run on the player's PC (src/recomp)
+# ---------------------------------------------------------------------------
+set(RT_EMBED ${CMAKE_BINARY_DIR}/generated/rt_embed.inc)
+add_custom_command(
+  OUTPUT ${RT_EMBED}
+  COMMAND ${CMAKE_COMMAND} -DOUT=${RT_EMBED} -DNAMES=rt_prelude_text,rt_helpers_text
+          -DFILES=${CMAKE_SOURCE_DIR}/src/recomp/rt_prelude.h,${CMAKE_SOURCE_DIR}/src/recomp/rt_helpers.h
+          -P ${CMAKE_SOURCE_DIR}/cmake/embed_text.cmake
+  DEPENDS src/recomp/rt_prelude.h src/recomp/rt_helpers.h cmake/embed_text.cmake)
+set(HF_RECOMP_SOURCES
+  src/native.c
+  src/recomp/m68kdec.c
+  src/recomp/gen68k.c
+  src/recomp/tcc_build.c)
+# One target makes the embedded runtime text; the others wait for it (listing
+# the file in several targets would let parallel builds write it at once).
+add_custom_target(hf_rt_embed DEPENDS ${RT_EMBED})
+set_source_files_properties(src/recomp/gen68k.c PROPERTIES OBJECT_DEPENDS ${RT_EMBED})
+include_directories(${CMAKE_BINARY_DIR}/generated)
+
+# ---------------------------------------------------------------------------
 # The game executable
 # ---------------------------------------------------------------------------
 set(HELLFIRE_RESOURCES "")
@@ -73,9 +116,13 @@ add_executable(hellfire WIN32
   src/settings.c
   src/launcher.c
   src/gamefx.c
-  src/soundtrack.c)
+  src/soundtrack.c
+  ${HF_RECOMP_SOURCES})
 
-target_link_libraries(hellfire PRIVATE gpgx)
+target_link_libraries(hellfire PRIVATE gpgx ${HF_TCC_LIB})
+if(UNIX)
+  target_link_libraries(hellfire PRIVATE ${CMAKE_DL_LIBS})
+endif()
 if(TARGET SDL2::SDL2main)
   target_link_libraries(hellfire PRIVATE SDL2::SDL2main)
 endif()
@@ -112,8 +159,29 @@ add_custom_command(TARGET hellfire POST_BUILD
           ${CMAKE_SOURCE_DIR}/assets $<TARGET_FILE_DIR:hellfire>/assets)
 
 # Headless smoke test: boots a ROM for a few seconds and saves a screenshot.
-add_executable(hellfire_smoketest tools/smoketest.c src/emu.c src/sha1.c src/romcheck.c src/hf_file.c src/widescreen.c src/gamefx.c)
-target_link_libraries(hellfire_smoketest PRIVATE gpgx)
+add_executable(hellfire_smoketest tools/smoketest.c src/emu.c src/sha1.c src/romcheck.c src/hf_file.c src/widescreen.c src/gamefx.c ${HF_RECOMP_SOURCES})
+target_link_libraries(hellfire_smoketest PRIVATE gpgx ${HF_TCC_LIB})
+
+# Frame-by-frame check of recompiled code against the interpreter.
+add_executable(hellfire_recomp_check tools/recomp_check.c src/emu.c src/hf_file.c src/widescreen.c src/gamefx.c ${HF_RECOMP_SOURCES})
+target_link_libraries(hellfire_recomp_check PRIVATE gpgx ${HF_TCC_LIB})
+if(UNIX)
+  target_link_libraries(hellfire_recomp_check PRIVATE m ${CMAKE_DL_LIBS})
+  target_link_libraries(hellfire_smoketest PRIVATE ${CMAKE_DL_LIBS})
+endif()
 if(UNIX)
   target_link_libraries(hellfire_smoketest PRIVATE m)
 endif()
+
+# Per-instruction fuzz test of the recompiler (Linux, calls gcc).
+if(UNIX AND NOT APPLE)
+  add_executable(hellfire_recomp_fuzz tools/recomp_fuzz.c src/native.c
+    src/recomp/m68kdec.c src/recomp/gen68k.c)
+  target_link_libraries(hellfire_recomp_fuzz PRIVATE gpgx m ${CMAKE_DL_LIBS})
+endif()
+
+foreach(t hellfire hellfire_smoketest hellfire_recomp_check hellfire_recomp_fuzz)
+  if(TARGET ${t})
+    add_dependencies(${t} hf_rt_embed)
+  endif()
+endforeach()
