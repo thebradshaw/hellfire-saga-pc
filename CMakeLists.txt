@@ -85,8 +85,11 @@ set(HF_RECOMP_SOURCES
   src/native.c
   src/recomp/m68kdec.c
   src/recomp/gen68k.c
-  src/recomp/tcc_build.c
-  ${RT_EMBED})
+  src/recomp/tcc_build.c)
+# One target makes the embedded runtime text; the others wait for it (listing
+# the file in several targets would let parallel builds write it at once).
+add_custom_target(hf_rt_embed DEPENDS ${RT_EMBED})
+set_source_files_properties(src/recomp/gen68k.c PROPERTIES OBJECT_DEPENDS ${RT_EMBED})
 include_directories(${CMAKE_BINARY_DIR}/generated)
 
 # ---------------------------------------------------------------------------
@@ -173,6 +176,12 @@ endif()
 # Per-instruction fuzz test of the recompiler (Linux, calls gcc).
 if(UNIX AND NOT APPLE)
   add_executable(hellfire_recomp_fuzz tools/recomp_fuzz.c src/native.c
-    src/recomp/m68kdec.c src/recomp/gen68k.c ${RT_EMBED})
+    src/recomp/m68kdec.c src/recomp/gen68k.c)
   target_link_libraries(hellfire_recomp_fuzz PRIVATE gpgx m ${CMAKE_DL_LIBS})
 endif()
+
+foreach(t hellfire hellfire_smoketest hellfire_recomp_check hellfire_recomp_fuzz)
+  if(TARGET ${t})
+    add_dependencies(${t} hf_rt_embed)
+  endif()
+endforeach()
