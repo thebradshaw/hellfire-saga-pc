@@ -9,9 +9,10 @@
  * The game's camera X is the left edge of its original 320px view. In wide
  * mode the emulator shows 40 more pixels on each side, so the visible range
  * becomes camera-40 .. camera+360. Level art is drawn in 16px blocks:
- *  - rows start 64px further left and are 28 blocks long instead of 22
+ *  - rows start 64px further left and are 29 blocks long instead of 22
  *  - full-screen redraws start 64px left of the camera, 29 columns
- *  - new columns while scrolling appear 48px further out on either side,
+ *  - new columns while scrolling appear 48px (left) and 64px (right)
+ *    further out, 24px past each visible edge,
  *    and rows reach from the left column to the right one
  * The wider rows would overflow the game's tile-update buffer at $FFD0B6
  * in busy frames, so hook_row empties it first (see there).
@@ -34,11 +35,16 @@ typedef struct
 #define HOOK_BASE 0x3F0000u
 
 /* hook_row: entry of the level row drawer. Start rows 64px further left and,
-   for screen-width rows (22 blocks), draw 28 blocks instead. That covers
+   for screen-width rows (22 blocks), draw 29 blocks instead. That covers
    exactly the blocks from the newest left column (64px left of the camera)
-   to the newest right column (368px right of it). Rows any shorter leave
+   to the newest right column (384px right of it). Rows any shorter leave
    gaps: a block the right column drew earlier, while it was off the top or
    bottom of the screen, would never be drawn and show stale tiles.
+   Only screen rows are moved. Other rows, like the 32-block background
+   rows that already span the whole plane, stay as they are: moved left of
+   x=0 they read garbage from the level layout (stone blocks floating in
+   Malicious Glance's background). For the same reason a screen row never
+   starts left of the level.
    The rows go into the game's tile-update buffer at $FFD0B6 (a6 points at
    its end), which is sent to VRAM once a frame. In Sin City and Malicious
    Glance one frame can hold a row, a column and a 32-block background row,
@@ -47,11 +53,13 @@ typedef struct
    anything already in the buffer is sent to VRAM now, using the game's own
    routine, and the buffer starts over. */
 static const uint8_t hook_row[] = {
-  0x04, 0x44, 0x00, 0x40,             /* subi.w #$40,d4          */
   0x0C, 0x46, 0x00, 0x15,             /* cmpi.w #$15,d6          */
-  0x66, 0x02,                         /* bne.s  +2               */
-  0x7C, 0x1B,                         /* moveq  #$1B,d6          */
-  0xBC, 0xFC, 0xD0, 0xB6,             /* cmpa.w #$D0B6,a6        */
+  0x66, 0x0A,                         /* bne.s  flush            (other rows as they are) */
+  0x7C, 0x1C,                         /* moveq  #$1C,d6          */
+  0x04, 0x44, 0x00, 0x40,             /* subi.w #$40,d4          */
+  0x6A, 0x02,                         /* bpl.s  flush            */
+  0x78, 0x00,                         /* moveq  #0,d4            (never left of the level) */
+  0xBC, 0xFC, 0xD0, 0xB6,             /* flush: cmpa.w #$D0B6,a6 */
   0x67, 0x10,                         /* beq.s  done             (buffer empty) */
   0x48, 0xE7, 0x90, 0x84,             /* movem.l d0/d3/a0/a5,-(sp) */
   0x4E, 0xB8, 0x2C, 0xD6,             /* jsr    $2CD6.w          (send buffer to VRAM) */
@@ -122,9 +130,9 @@ static const Patch patches[] = {
   P(0x299A, L(0xD8, 0x40, 0x04, 0x45, 0x00, 0x10), L(JSR_L(HOOK_LEFT_COL)), "FG left column"),
   P(0x2A90, L(0xD8, 0x40, 0x04, 0x45, 0x00, 0x10), L(JSR_L(HOOK_LEFT_COL)), "BG left column"),
   P(0x2B52, L(0xD8, 0x40, 0x04, 0x45, 0x00, 0x10), L(JSR_L(HOOK_LEFT_COL)), "BG2 left column"),
-  P(0x29C4, L(0x06, 0x44, 0x01, 0x40), L(0x06, 0x44, 0x01, 0x70), "FG right column"),
-  P(0x2ABA, L(0x06, 0x44, 0x01, 0x40), L(0x06, 0x44, 0x01, 0x70), "BG right column"),
-  P(0x2B7C, L(0x06, 0x44, 0x01, 0x40), L(0x06, 0x44, 0x01, 0x70), "BG2 right column"),
+  P(0x29C4, L(0x06, 0x44, 0x01, 0x40), L(0x06, 0x44, 0x01, 0x80), "FG right column"),
+  P(0x2ABA, L(0x06, 0x44, 0x01, 0x40), L(0x06, 0x44, 0x01, 0x80), "BG right column"),
+  P(0x2B7C, L(0x06, 0x44, 0x01, 0x40), L(0x06, 0x44, 0x01, 0x80), "BG2 right column"),
 
   /* ---- sprites: on-screen test covers 400px (camera-relative objects) ---- */
   P(0x1C4E, L(0x90, 0x53, 0x36, 0x00), L(0x4E, 0xB8, 0x00, HOOK_SPRITE), "sprites A: shift X"),
