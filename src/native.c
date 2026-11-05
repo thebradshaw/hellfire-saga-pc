@@ -73,10 +73,13 @@ void native_layout(Gen68kLayout *L)
 
 /* ---- the hook ------------------------------------------------------------ */
 
+void (*native_trace)(void);
+
 static int native_hook(void)
 {
   uint32_t pc = m68k.pc;
   RegionFn fn;
+  if (native_trace) native_trace();
   if (pc < ROM_LIMIT && (fn = table[pc >> shift]) != NULL && fn())
   {
     n_native++;

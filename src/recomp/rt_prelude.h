@@ -220,6 +220,12 @@ static void W32(u32 a, u32 v)
 
 /* At every instruction: stop when this line's cycles are used up, then
    the 68000's bus refresh delay, exactly as the interpreter's loop does. */
+#ifdef HF_ONE_STEP   /* debugging: return to the host after every instruction */
+#define STEP(a) \
+  if (one || (u32)CYCLES >= CEND) { PC = (a); return 1; } one = 1; \
+  if (CYCLES >= REFRESH + 896) { REFRESH = (CYCLES / 896) * 896; CYCLES += 14; }
+#else
 #define STEP(a) \
   if ((u32)CYCLES >= CEND) { PC = (a); return 1; } \
   if (CYCLES >= REFRESH + 896) { REFRESH = (CYCLES / 896) * 896; CYCLES += 14; }
+#endif

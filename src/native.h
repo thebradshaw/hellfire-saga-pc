@@ -56,4 +56,7 @@ void native_counters(uint64_t *interp_steps, uint64_t *native_calls);
    recompiler missed). Writes up to max, returns how many there are. */
 size_t native_missed(uint32_t *out, size_t max);
 
+/* debugging: called before every step (native or interpreted) */
+extern void (*native_trace)(void);
+
 #endif

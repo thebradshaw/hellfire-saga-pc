@@ -50,6 +50,24 @@ endif()
 find_package(SDL2 REQUIRED)
 
 # ---------------------------------------------------------------------------
+# Recompiler: 68000 -> C, run on the player's PC (src/recomp)
+# ---------------------------------------------------------------------------
+set(RT_EMBED ${CMAKE_BINARY_DIR}/generated/rt_embed.inc)
+add_custom_command(
+  OUTPUT ${RT_EMBED}
+  COMMAND ${CMAKE_COMMAND} -DOUT=${RT_EMBED} -DNAMES=rt_prelude_text,rt_helpers_text
+          -DFILES=${CMAKE_SOURCE_DIR}/src/recomp/rt_prelude.h,${CMAKE_SOURCE_DIR}/src/recomp/rt_helpers.h
+          -P ${CMAKE_SOURCE_DIR}/cmake/embed_text.cmake
+  DEPENDS src/recomp/rt_prelude.h src/recomp/rt_helpers.h cmake/embed_text.cmake)
+set(HF_RECOMP_SOURCES
+  src/native.c
+  src/recomp/m68kdec.c
+  src/recomp/gen68k.c
+  src/recomp/tcc_build.c
+  ${RT_EMBED})
+include_directories(${CMAKE_BINARY_DIR}/generated)
+
+# ---------------------------------------------------------------------------
 # The game executable
 # ---------------------------------------------------------------------------
 set(HELLFIRE_RESOURCES "")
@@ -73,9 +91,13 @@ add_executable(hellfire WIN32
   src/settings.c
   src/launcher.c
   src/gamefx.c
-  src/soundtrack.c)
+  src/soundtrack.c
+  ${HF_RECOMP_SOURCES})
 
-target_link_libraries(hellfire PRIVATE gpgx)
+target_link_libraries(hellfire PRIVATE gpgx ${HF_TCC_LIB})
+if(UNIX)
+  target_link_libraries(hellfire PRIVATE ${CMAKE_DL_LIBS})
+endif()
 if(TARGET SDL2::SDL2main)
   target_link_libraries(hellfire PRIVATE SDL2::SDL2main)
 endif()
@@ -112,8 +134,16 @@ add_custom_command(TARGET hellfire POST_BUILD
           ${CMAKE_SOURCE_DIR}/assets $<TARGET_FILE_DIR:hellfire>/assets)
 
 # Headless smoke test: boots a ROM for a few seconds and saves a screenshot.
-add_executable(hellfire_smoketest tools/smoketest.c src/emu.c src/sha1.c src/romcheck.c src/hf_file.c src/widescreen.c src/gamefx.c)
-target_link_libraries(hellfire_smoketest PRIVATE gpgx)
+add_executable(hellfire_smoketest tools/smoketest.c src/emu.c src/sha1.c src/romcheck.c src/hf_file.c src/widescreen.c src/gamefx.c ${HF_RECOMP_SOURCES})
+target_link_libraries(hellfire_smoketest PRIVATE gpgx ${HF_TCC_LIB})
+
+# Frame-by-frame check of recompiled code against the interpreter.
+add_executable(hellfire_recomp_check tools/recomp_check.c src/emu.c src/hf_file.c src/widescreen.c src/gamefx.c ${HF_RECOMP_SOURCES})
+target_link_libraries(hellfire_recomp_check PRIVATE gpgx ${HF_TCC_LIB})
+if(UNIX)
+  target_link_libraries(hellfire_recomp_check PRIVATE m ${CMAKE_DL_LIBS})
+  target_link_libraries(hellfire_smoketest PRIVATE ${CMAKE_DL_LIBS})
+endif()
 if(UNIX)
   target_link_libraries(hellfire_smoketest PRIVATE m)
 endif()

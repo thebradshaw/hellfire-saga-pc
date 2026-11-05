@@ -70,9 +70,40 @@ static void push(G *g, uint32_t a)
 /* Jump tables. Handles the two idioms the engine uses:
      move.w  Tbl(pc,dN.w),dM   +  jmp/jsr Tbl(pc,dM.w)   (word offsets)
      jmp     Tbl(pc,dN.w)  into a list of bra / jmp instructions          */
+static int plausible(G *g, uint32_t a);
+
+static uint32_t rd32(G *g, uint32_t a)
+{
+  return ((uint32_t)rd16(g, a) << 16) | rd16(g, a + 2);
+}
+
+/* Table of code pointers (longs) at base: take entries while they point
+   at plausible code. */
+static void long_table(G *g, uint32_t base, int max)
+{
+  int k;
+  for (k = 0; k < max; k++)
+  {
+    uint32_t t = rd32(g, base + 4u * (uint32_t)k);
+    if (!in_rom(g, t) || t < 0x200 || !plausible(g, t)) break;
+    push(g, t);
+  }
+}
+
 static void jump_table(G *g, const Insn *prev, const Insn *in)
 {
   uint32_t base;
+  /*  movea.l Tbl(pc,dN.w),aM  +  jsr/jmp (aM)   (long pointers) */
+  if (in->src.mode == EA_AI && prev && prev->kind == K_MOVEA && prev->size == 4 && prev->dst.reg == in->src.reg)
+  {
+    if (prev->src.mode == EA_PCIX) long_table(g, prev->src.val + (uint32_t)prev->src.disp, 256);
+    else if (prev->src.mode == EA_PCDI) long_table(g, prev->src.val + (uint32_t)prev->src.disp, 1);
+    else if (prev->src.mode == EA_AL || prev->src.mode == EA_AW)
+    {
+      if (in_rom(g, prev->src.val)) long_table(g, prev->src.val, 1);
+    }
+    return;
+  }
   if (in->src.mode != EA_PCIX && in->src.mode != EA_PCDI) return;
   base = in->src.val + (uint32_t)in->src.disp;
   if (in->src.mode == EA_PCIX && prev && prev->kind == K_MOVE && prev->size == 2 &&
@@ -183,6 +214,18 @@ static void weak_scan(G *g)
         cand = in.src.val;
       if (cand != 0xffffffffu && in_rom(g, cand) && cand >= 0x200 && !g->code[cand >> 1] && plausible(g, cand))
         push(g, cand);
+    }
+    /* runs of 2+ longs that all point at plausible code: pointer tables */
+    for (a = 0; a + 8 <= g->cfg->rom_size; a += 2)
+    {
+      uint32_t t0 = rd32(g, a), t1 = rd32(g, a + 4);
+      if (g->code[a >> 1]) continue;
+      if (in_rom(g, t0) && in_rom(g, t1) && t0 >= 0x200 && t1 >= 0x200 &&
+          plausible(g, t0) && plausible(g, t1))
+      {
+        push(g, t0);
+        push(g, t1);
+      }
     }
     discover(g);
     if (g->st.instructions == before) break;
@@ -935,7 +978,7 @@ uint32_t gen68k_hash(const uint8_t *rom, uint32_t rom_size, uint32_t start, uint
 static void emit_region(G *g, uint32_t start, uint32_t end, unsigned id)
 {
   uint32_t a;
-  P(g, "\n/* ---- region %u: 0x%06X-0x%06X ---- */\nstatic int r%u(void)\n{\n  int ran = 0;\ndispatch:\n  switch (PC) {\n", id, start, end - 1, id);
+  P(g, "\n/* ---- region %u: 0x%06X-0x%06X ---- */\nstatic int r%u(void)\n{\n  int ran = 0, one = 0; (void)one;\ndispatch:\n  switch (PC) {\n", id, start, end - 1, id);
   for (a = start; a < end; a += 2)
     if (is_code(g, a)) P(g, "    case 0x%X: goto L%06X;\n", a, a);
   P(g, "    default: return ran;\n  }\nredispatch:\n  ran = 1;\n  goto dispatch;\n");
