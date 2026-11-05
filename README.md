@@ -1,11 +1,11 @@
 <h1 align="center">HellFire Saga PC</h1>
 
-<p align="center">A native PC port of <b>Sonic the HellFire Saga</b>, one of the best Sonic hacks ever, for Windows and Linux.<br>400×224 widescreen, black bars for boss fights, a soundtrack player, and the game's code recompiled to native C.</p>
+<p align="center">A native PC port of <b>Sonic the HellFire Saga</b>, one of the best Sonic hacks ever, for Windows and Linux.<br>400×224 widescreen, black bars for boss fights, a soundtrack player, and the game's code recompiled to native C.<br>Made by Vibe Slop Studios.</p>
 
 <p align="center">
-  <a href="https://github.com/thebradshaw/hellfire-saga-pc/releases/latest/download/hellfire-saga-pc-windows-x64.zip"><img alt="Download for Windows" src="https://img.shields.io/badge/Download-Windows%20(x64)-c0392b?style=for-the-badge&logo=windows&logoColor=white" height="44"></a>
+  <a href="https://github.com/thebradshaw/hellfire-saga-pc/releases/latest/download/hellfire-saga-pc-windows-x64.zip"><img alt="Download for Windows" src="https://img.shields.io/badge/Download-Windows%20(x64)-c0392b?style=for-the-badge&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0id2hpdGUiPjxwYXRoIGQ9Ik0xIDMuNSAxMCAyLjN2OC45SDF6TTExIDIuMSAyMyAuNXYxMC43SDExek0xIDEyLjJoOXY4LjlMMSAxOS45ek0xMSAxMi4yaDEydjEwLjdsLTEyLTEuNnoiLz48L3N2Zz4%3D" height="44"></a>
   &nbsp;
-  <a href="https://github.com/thebradshaw/hellfire-saga-pc/releases/latest/download/hellfire-saga-pc-linux-x64.tar.gz"><img alt="Download for Linux" src="https://img.shields.io/badge/Download-Linux%20(x64)-555555?style=for-the-badge&logo=linux&logoColor=white" height="44"></a>
+  <a href="https://github.com/thebradshaw/hellfire-saga-pc/releases/latest/download/hellfire-saga-pc-linux-x64.tar.gz"><img alt="Download for Linux" src="https://img.shields.io/badge/Download-Linux%20(x64)-555555?style=for-the-badge&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0id2hpdGUiPjxwYXRoIGQ9Ik0xMiAxQzkgMSA3LjYgMy41IDcuNiA2LjNjMCAxLjYtLjQgMi42LTEuNCA0LjFDNC45IDEyLjMgNCAxNC4yIDQgMTYuM2MwIDEuMi40IDIuMSAxIDIuOC0uNi4zLTEuNi43LTEuNiAxLjYgMCAxIDEuNCAxLjMgMy42IDIuMSAxIC40IDEuOC4yIDIuMy0uNGg1LjRjLjUuNiAxLjMuOCAyLjMuNCAyLjItLjggMy42LTEuMSAzLjYtMi4xIDAtLjktMS0xLjMtMS42LTEuNi42LS43IDEtMS42IDEtMi44IDAtMi4xLS45LTQtMi4yLTUuOS0xLTEuNS0xLjQtMi41LTEuNC00LjFDMTYuNCAzLjUgMTUgMSAxMiAxeiIvPjxlbGxpcHNlIGN4PSIxMiIgY3k9IjE1LjUiIHJ4PSI0IiByeT0iNC44IiBmaWxsPSIjNTU1Ii8%2BPGNpcmNsZSBjeD0iMTAuNCIgY3k9IjUuNiIgcj0iMSIgZmlsbD0iIzU1NSIvPjxjaXJjbGUgY3g9IjEzLjYiIGN5PSI1LjYiIHI9IjEiIGZpbGw9IiM1NTUiLz48cGF0aCBkPSJNMTAuNSA3LjZoM0wxMiA5LjN6IiBmaWxsPSIjZjViODAwIi8%2BPC9zdmc%2B" height="44"></a>
 </p>
 <p align="center"><a href="https://github.com/thebradshaw/hellfire-saga-pc/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/thebradshaw/hellfire-saga-pc?label=latest%20release&style=flat-square"></a></p>
 
@@ -176,6 +176,8 @@ the Windows build.
 Found a spot where widescreen looks wrong, such as a boss arena or a level edge? Please [open an issue](../../issues) with a screenshot.
 
 ## Credits
+
+This port is made by **Vibe Slop Studios**.
 
 If you enjoy it, you can [buy me a coffee](https://buymeacoffee.com/chrisbradshaw).
 
