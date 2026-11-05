@@ -31,6 +31,7 @@ static void defaults(void)
   settings.fps120     = 0;
   settings.invincible = 0;
   settings.crt        = CRT_OFF;
+  settings.native     = 1;
 }
 
 void settings_load(void)
@@ -60,6 +61,7 @@ void settings_load(void)
     else if (!strcmp(line, "fps120"))     settings.fps120     = atoi(val) != 0;
     else if (!strcmp(line, "crt"))        settings.crt        = SDL_clamp(atoi(val), 0, CRT_COUNT - 1);
     else if (!strcmp(line, "invincible")) settings.invincible = atoi(val) != 0;
+    else if (!strcmp(line, "native"))     settings.native     = atoi(val) != 0;
     else if (!strcmp(line, "volume"))     settings.volume     = SDL_clamp(atoi(val), 0, 100);
   }
   fclose(f);
@@ -82,5 +84,6 @@ void settings_save(void)
   fprintf(f, "fps120=%d\n",     settings.fps120);
   fprintf(f, "invincible=%d\n", settings.invincible);
   fprintf(f, "crt=%d\n",        settings.crt);
+  fprintf(f, "native=%d\n",     settings.native);
   fclose(f);
 }

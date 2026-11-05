@@ -1,8 +1,9 @@
 /*
  * tcc_build.c - compiles generated C in memory with the bundled TinyCC.
  *
- * Without HF_HAVE_LIBTCC (developer builds on Linux) it falls back to the
- * system's gcc and dlopen, which also gives an optimized build to compare.
+ * Without HF_HAVE_LIBTCC (developer builds on Linux) it can use the system
+ * compiler named in HF_NATIVE_CC (e.g. "gcc -O1") and dlopen instead, which
+ * also gives an optimized build to compare against.
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -52,6 +53,12 @@ void *tcc_build(const char *source, void **init_fn, char *err, size_t err_size)
   const char *cc = getenv("HF_NATIVE_CC");
   FILE *f;
   void *h;
+  if (!cc)
+  {
+    /* gcc takes minutes on the whole game: only when asked for */
+    snprintf(err, err_size, "no compiler in this build (set HF_NATIVE_CC to use gcc)");
+    return NULL;
+  }
   snprintf(c_path, sizeof(c_path), "/tmp/hf_native_%d.c", (int)getpid());
   snprintf(so_path, sizeof(so_path), "/tmp/hf_native_%d.so", (int)getpid());
   f = fopen(c_path, "w");
@@ -59,7 +66,7 @@ void *tcc_build(const char *source, void **init_fn, char *err, size_t err_size)
   fputs(source, f);
   fclose(f);
   snprintf(cmd, sizeof(cmd), "%s -w -shared -fPIC -fno-strict-aliasing -fwrapv %s -o %s",
-           cc ? cc : "gcc -O1", c_path, so_path);
+           cc, c_path, so_path);
   if (system(cmd) != 0) { snprintf(err, err_size, "compiler failed"); return NULL; }
   h = dlopen(so_path, RTLD_NOW | RTLD_LOCAL);
   unlink(so_path);

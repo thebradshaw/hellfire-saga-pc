@@ -2,6 +2,7 @@
  * main.c - HellFire Saga PC: window, main loop, launcher <-> game switching.
  */
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <SDL.h>
 
@@ -15,6 +16,8 @@
 #include "widescreen.h"
 #include "gamefx.h"
 #include "soundtrack.h"
+#include "native.h"
+#include "hf_file.h"
 
 #define WIDE_EXTRA_COLUMNS 10   /* 320 + 10*8 = 400 pixels */
 
@@ -25,6 +28,74 @@ static uint32_t pause_px[576 * 240];
 static uint32_t game_px[576 * 240];    /* game frame + bars, as shown */
 static int      game_w, game_h;
 static int16_t  sound[4096 * 2];
+
+/* ---- native code ------------------------------------------------------------
+   Code addresses the interpreter had to run last time (the recompiler missed
+   them) are kept in native_entries.txt and recompiled next launch. */
+
+#define MAX_ENTRIES 65536
+static uint32_t entries[MAX_ENTRIES];
+static size_t   n_entries;
+
+static void entries_path(char *out, size_t n)
+{
+  snprintf(out, n, "%snative_entries.txt", settings_dir());
+}
+
+static void load_entries(void)
+{
+  char path[1200], line[64];
+  FILE *f;
+  n_entries = 0;
+  entries_path(path, sizeof(path));
+  f = hf_fopen(path, "r");
+  if (!f) return;
+  while (n_entries < MAX_ENTRIES && fgets(line, sizeof(line), f))
+  {
+    unsigned long a = strtoul(line, NULL, 16);
+    if (a && a < 0x400000 && !(a & 1)) entries[n_entries++] = (uint32_t)a;
+  }
+  fclose(f);
+}
+
+static void save_missed(void)
+{
+  static uint32_t missed[MAX_ENTRIES];
+  char path[1200];
+  size_t n, i;
+  FILE *f;
+  if (!native_active()) return;
+  n = native_missed(missed, MAX_ENTRIES);
+  if (n > MAX_ENTRIES) n = MAX_ENTRIES;
+  if (!n) return;
+  entries_path(path, sizeof(path));
+  f = hf_fopen(path, "a");
+  if (!f) return;
+  for (i = 0; i < n; i++) fprintf(f, "%06X\n", missed[i]);
+  fclose(f);
+}
+
+static void stop_game(void)
+{
+  save_missed();
+  emu_unload();
+}
+
+static void start_native(void)
+{
+  NativeInfo info;
+  launcher_native_status[0] = 0;
+  if (!settings.native) return;
+  load_entries();
+  if (native_start(entries, n_entries, &info))
+    snprintf(launcher_native_status, sizeof(launcher_native_status),
+             "Native: %u instructions of C", info.native);
+  else
+    snprintf(launcher_native_status, sizeof(launcher_native_status),
+             "Emulated (native build failed)");
+  SDL_Log("native code: %s %s (%.2fs to write, %.2fs to build)", launcher_native_status, info.error,
+          info.gen_seconds, info.build_seconds);
+}
 
 static int start_game(void)
 {
@@ -41,6 +112,8 @@ static int start_game(void)
   gamefx_fix_rom();
   gamefx_reset();
   gamefx_set_invincible(settings.invincible);
+  /* After every ROM patch: recompile the code exactly as it will run. */
+  start_native();
   game_w = game_h = 0;
   audio_clear();
   return 1;
@@ -255,7 +328,7 @@ int main(int argc, char **argv)
               acc = 0.0;
               break;
             case PAUSE_EXIT:
-              emu_unload();
+              stop_game();
               audio_pause(0);
               audio_clear();
               mode = MODE_LAUNCHER;
@@ -374,7 +447,7 @@ int main(int argc, char **argv)
   }
 
   soundtrack_close();
-  emu_unload();
+  stop_game();
   settings_save();
   launcher_shutdown();
   controls_shutdown();
