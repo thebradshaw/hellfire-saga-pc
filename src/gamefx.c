@@ -27,7 +27,8 @@ static int    bars_target;            /* 0 = wide, 1 = bars in   */
 static double bars_pos;               /* 0..1, animated          */
 static int    hide_miso_wrap;
 static int    miso_waiting_seen;      /* the Miso logo has been parked off-screen */
-static int    widen_miso;
+static int    widen_miso;             /* 0, or the first column to stretch */
+static int    extend_miso_beam;       /* logo mid-slide: run the beam on */
 static int    had_control;            /* player has moved freely in this level */
 static int    drop_when_black;        /* level loading: bars wait for the fade to black */
 static int    loading_frames;
@@ -40,6 +41,7 @@ void gamefx_reset(void)
   hide_miso_wrap = 0;
   miso_waiting_seen = 0;
   widen_miso = 0;
+  extend_miso_beam = 0;
   had_control = 0;
   drop_when_black = 0;
   loading_frames = 0;
@@ -103,7 +105,18 @@ void gamefx_frame(void)
     /* Once the Miso logo has settled, its background art stops 40px short
        of the right edge: stretch the art right of the logo to fill it. */
     /* Keep doing so while it slides away to the left (negative offsets). */
-    widen_miso = mode == MODE_SEGA && miso_waiting_seen && (slide == 0 || slide >= 0x8000);
+    widen_miso = 0;
+    if (mode == MODE_SEGA && miso_waiting_seen)
+    {
+      if (slide == 0 || slide >= 0x8000) widen_miso = 292;
+      /* While it slides in from the right, stretch only what is right of
+         the logo (it sits slide pixels further right). Early on, the logo
+         itself fills that edge. */
+      else if (slide < 40) widen_miso = 292 + slide;
+    }
+    /* Further out, the logo covers the right edge: only run the dark
+       background beam on behind it. */
+    extend_miso_beam = mode == MODE_SEGA && miso_waiting_seen && !widen_miso && slide < 0x180;
   }
 }
 
@@ -143,18 +156,32 @@ void gamefx_draw(uint32_t *px, int w, int h, int pitch, double dt)
     }
   }
 
-  if (widen_miso && w == 400)
+  if (extend_miso_beam && w == 400)
   {
-    /* Stretch columns 292..359 (beam + curved stripes, right of the logo)
-       across 292..399. The beam is horizontal, so it simply runs on. */
-    enum { SRC0 = 292, SRC1 = 360, DST1 = 400 };
     for (y = 0; y < h; y++)
     {
       uint32_t *row = px + (size_t)y * pitch;
-      uint32_t src[SRC1 - SRC0];
-      memcpy(src, row + SRC0, sizeof(src));
-      for (x = SRC0; x < DST1; x++)
-        row[x] = src[(x - SRC0) * (SRC1 - SRC0) / (DST1 - SRC0)];
+      uint32_t c = row[359];
+      int dark = ((c >> 16) & 255) < 0x30 && ((c >> 8) & 255) < 0x30 && (c & 255) < 0x60;
+      if (!dark) continue;
+      for (x = 360; x < 400; x++)
+        if ((row[x] & 0xFFFFFF) == 0) row[x] = c;
+    }
+  }
+
+  if (widen_miso && w == 400)
+  {
+    /* Stretch the columns right of the logo (beam + curved stripes) up to
+       359 across to 399. The beam is horizontal, so it simply runs on. */
+    enum { SRC1 = 360, DST1 = 400 };
+    int src0 = widen_miso;
+    for (y = 0; y < h; y++)
+    {
+      uint32_t *row = px + (size_t)y * pitch;
+      uint32_t src[SRC1];
+      memcpy(src, row + src0, (size_t)(SRC1 - src0) * sizeof(uint32_t));
+      for (x = src0; x < DST1; x++)
+        row[x] = src[(x - src0) * (SRC1 - src0) / (DST1 - src0)];
     }
   }
 

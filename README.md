@@ -11,8 +11,10 @@ A PC port of **Sonic the HellFire Saga**, one of the best Sonic hacks ever, for 
 - Optional invincibility: enemies and drowning can't hurt you, but spikes,
   pits and being crushed still do
 - Fixes for small bugs in the game, like the drowning countdown digits
-- A soundtrack player: every sound test track, played by the game's own
-  sound driver from your ROM
+- A soundtrack player: every sound test track, with the official album's
+  track names, played by the game's own sound driver from your ROM
+- Mouse support in the launcher and pause menu (click, right-click = back,
+  wheel scrolls)
 - Game logic recompiled to native C *(coming, see Roadmap)*
 
 > **This repo contains no game data.** You need your own copy of the

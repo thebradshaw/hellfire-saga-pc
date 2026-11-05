@@ -121,6 +121,26 @@ void video_present(const uint32_t *px, int w, int h, int pitch_bytes, int scale_
   video_present_crt(px, w, h, pitch_bytes, scale_mode, CRT_OFF);
 }
 
+static SDL_Rect last_dst;            /* where the last image was drawn */
+static int      last_w, last_h;      /* and its size in pixels         */
+
+int video_to_canvas(int wx, int wy, int *cx, int *cy)
+{
+  int ww, wh, ow, oh;
+  double px, py;
+  if (!last_w || !window || !renderer) return 0;
+  SDL_GetWindowSize(window, &ww, &wh);
+  SDL_GetRendererOutputSize(renderer, &ow, &oh);
+  if (ww <= 0 || wh <= 0) return 0;
+  px = wx * (double)ow / ww;          /* window points -> output pixels (HiDPI) */
+  py = wy * (double)oh / wh;
+  if (px < last_dst.x || py < last_dst.y || px >= last_dst.x + last_dst.w || py >= last_dst.y + last_dst.h)
+    return 0;
+  *cx = (int)((px - last_dst.x) * last_w / last_dst.w);
+  *cy = (int)((py - last_dst.y) * last_h / last_dst.h);
+  return 1;
+}
+
 void video_present_crt(const uint32_t *px, int w, int h, int pitch_bytes, int scale_mode, int crt)
 {
   int out_w, out_h, scale;
@@ -155,6 +175,9 @@ void video_present_crt(const uint32_t *px, int w, int h, int pitch_bytes, int sc
   }
   dst.x = (out_w - dst.w) / 2;
   dst.y = (out_h - dst.h) / 2;
+  last_dst = dst;
+  last_w = w;
+  last_h = h;
 
   {
     SDL_Rect src = { 0, 0, w, h };

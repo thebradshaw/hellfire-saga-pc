@@ -494,3 +494,86 @@ void pause_draw(Canvas *c)
     gfx_font_centered(c, &f_body, c->w / 2, y + 1, label, col);
   }
 }
+
+/* ---- mouse ----------------------------------------------------------------- */
+
+/* Which row of a centered list is under (x, y), or -1. */
+static int row_at(int x, int y, int top, int step, int h, int count, int w)
+{
+  int i;
+  if (x < CENTER_X - w / 2 || x >= CENTER_X + w / 2 || y < top) return -1;
+  i = (y - top) / step;
+  if (i >= count || y - top - i * step >= h) return -1;
+  return i;
+}
+
+LauncherResult launcher_mouse(int x, int y, int button)
+{
+  int i;
+
+  if (button == 3)
+    return screen == SCR_SETUP ? LAUNCH_NONE : launcher_event(MENU_BACK);
+
+  switch (screen)
+  {
+    case SCR_MAIN:
+      i = row_at(x, y, CONTENT_Y + 8, 38, 36, MAIN_COUNT, 280);
+      if (i < 0) break;
+      cursor = i;
+      if (button == 1) return launcher_event(MENU_OK);
+      break;
+
+    case SCR_OPTIONS:
+      i = row_at(x, y, CONTENT_Y + f_title.line_h + 2, 23, 23, OPT_COUNT, 440);
+      if (i < 0) break;
+      cursor = i;
+      if (button == 1) return launcher_event(MENU_OK);   /* cycles the value, or Back */
+      break;
+
+    case SCR_SOUNDTRACK:
+      i = row_at(x, y, CONTENT_Y + f_title.line_h + 4, TRACK_ROW_H, TRACK_ROW_H, TRACK_ROWS, 440);
+      if (i < 0 || track_top + i >= soundtrack_count()) break;
+      cursor = track_top + i;
+      if (button == 1) return launcher_event(MENU_OK);   /* play / stop */
+      break;
+
+    case SCR_CREDITS:
+      if (button == 1) return launcher_event(MENU_OK);
+      break;
+
+    case SCR_SETUP:
+      break;
+  }
+  return LAUNCH_NONE;
+}
+
+LauncherResult launcher_wheel(int steps)
+{
+  if (screen == SCR_SOUNDTRACK)
+  {
+    /* Scroll the list; the cursor follows so it stays in view. */
+    int count = soundtrack_count(), max_top = count > TRACK_ROWS ? count - TRACK_ROWS : 0;
+    track_top -= steps;
+    if (track_top < 0) track_top = 0;
+    if (track_top > max_top) track_top = max_top;
+    if (cursor < track_top) cursor = track_top;
+    if (cursor >= track_top + TRACK_ROWS) cursor = track_top + TRACK_ROWS - 1;
+    return LAUNCH_NONE;
+  }
+  while (steps > 0) { launcher_event(MENU_UP); steps--; }
+  while (steps < 0) { launcher_event(MENU_DOWN); steps++; }
+  return LAUNCH_NONE;
+}
+
+PauseResult pause_mouse(int x, int y, int button, int canvas_w, int canvas_h)
+{
+  int row = f_body.atlas.px ? f_body.line_h + 2 : 16;
+  int top = canvas_h / 2 - row, i;
+
+  if (button == 3) return pause_event(MENU_BACK);
+  if (x < canvas_w / 2 - 100 || x >= canvas_w / 2 + 100 || y < top) return PAUSE_NONE;
+  i = (y - top) / row;
+  if (i >= PAUSE_COUNT) return PAUSE_NONE;
+  pause_cursor = i;
+  return button == 1 ? pause_event(MENU_OK) : PAUSE_NONE;
+}

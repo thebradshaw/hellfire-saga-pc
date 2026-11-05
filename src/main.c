@@ -161,6 +161,8 @@ int main(int argc, char **argv)
     while (SDL_PollEvent(&e))
     {
       MenuAction a = controls_event(&e);
+      LauncherResult mouse_result = LAUNCH_NONE;
+      PauseResult mouse_pause = PAUSE_NONE;
 
       if (e.type == SDL_QUIT) running = 0;
 
@@ -178,10 +180,33 @@ int main(int argc, char **argv)
         continue;
       }
 
+      /* The mouse works the launcher and the pause menu. */
+      if (mode != MODE_GAME &&
+          (e.type == SDL_MOUSEMOTION || e.type == SDL_MOUSEBUTTONDOWN || e.type == SDL_MOUSEWHEEL))
+      {
+        int mx, my, cx, cy, button = 0;
+        if (e.type == SDL_MOUSEWHEEL) SDL_GetMouseState(&mx, &my);
+        else if (e.type == SDL_MOUSEMOTION) { mx = e.motion.x; my = e.motion.y; }
+        else
+        {
+          mx = e.button.x; my = e.button.y;
+          button = e.button.button == SDL_BUTTON_LEFT ? 1 : e.button.button == SDL_BUTTON_RIGHT ? 3 : -1;
+        }
+        if (button >= 0 && video_to_canvas(mx, my, &cx, &cy))
+        {
+          if (mode == MODE_LAUNCHER)
+            mouse_result = e.type == SDL_MOUSEWHEEL ? launcher_wheel(e.wheel.y) : launcher_mouse(cx, cy, button);
+          else if (mode == MODE_PAUSED && e.type != SDL_MOUSEWHEEL)
+            mouse_pause = pause_mouse(cx, cy, button, game_w, game_h);
+        }
+        else if (button == 3 && mode == MODE_LAUNCHER)
+          mouse_result = launcher_mouse(-1, -1, 3);   /* right click outside the image: back */
+      }
+
       switch (mode)
       {
         case MODE_LAUNCHER:
-          switch (launcher_event(a))
+          switch (mouse_result != LAUNCH_NONE ? mouse_result : launcher_event(a))
           {
             case LAUNCH_PLAY:
               if (launcher_rom_ready() && start_game())
@@ -212,7 +237,7 @@ int main(int argc, char **argv)
           break;
 
         case MODE_PAUSED:
-          switch (pause_event(a))
+          switch (mouse_pause != PAUSE_NONE ? mouse_pause : pause_event(a))
           {
             case PAUSE_RESUME:
               mode = MODE_GAME;
@@ -240,6 +265,13 @@ int main(int argc, char **argv)
           }
           break;
       }
+    }
+
+    /* Show the mouse pointer in the menus, hide it while playing. */
+    {
+      static int pointer_shown = -1;
+      int want = mode != MODE_GAME;
+      if (want != pointer_shown) { SDL_ShowCursor(want ? SDL_ENABLE : SDL_DISABLE); pointer_shown = want; }
     }
 
     now = SDL_GetPerformanceCounter();

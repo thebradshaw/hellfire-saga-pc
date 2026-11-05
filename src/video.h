@@ -28,4 +28,8 @@ void video_set_icon(const uint32_t *px, int w, int h);
 
 SDL_Window *video_window(void);
 
+/* Maps a point in window coordinates (mouse events) to the last presented
+   image's pixel coordinates. Returns 0 if it is outside the image. */
+int video_to_canvas(int wx, int wy, int *cx, int *cy);
+
 #endif

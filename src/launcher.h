@@ -39,11 +39,17 @@ int  launcher_rom_ready(void);
 void launcher_offer_rom(const char *path);
 
 LauncherResult launcher_event(MenuAction a);
+
+/* Mouse, in launcher canvas pixels. button: 0 = moved, 1 = left click,
+   3 = right click (back). wheel: scroll steps, positive = up. */
+LauncherResult launcher_mouse(int x, int y, int button);
+LauncherResult launcher_wheel(int steps);
 void           launcher_draw(Canvas *c, unsigned ticks);
 
 /* Pause menu, drawn over the frozen game frame. */
 void        pause_open(void);
 PauseResult pause_event(MenuAction a);
+PauseResult pause_mouse(int x, int y, int button, int canvas_w, int canvas_h);
 void        pause_draw(Canvas *c);
 
 #endif
