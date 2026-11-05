@@ -15,7 +15,8 @@ A PC port of **Sonic the HellFire Saga**, one of the best Sonic hacks ever, for 
   track names, played by the game's own sound driver from your ROM
 - Mouse support in the launcher and pause menu (click, right-click = back,
   wheel scrolls)
-- Game logic recompiled to native C *(coming, see Roadmap)*
+- Game logic recompiled to native C from your own ROM at launch (see
+  [Native code](#native-code)); the emulated 68000 stays as a fallback
 
 > **This repo contains no game data.** You need your own copy of the
 > HellFire Saga v2.11 ROM, already patched. The launcher checks it by
@@ -67,7 +68,17 @@ GitHub Actions builds both on every pull request. Download them from the run's *
 **Smoke test.** This boots a ROM headless, runs N frames and writes a screenshot:
 
 ```sh
-./build/hellfire_smoketest HellfireSaga.gen out.ppm 2400 10   # 10 extra columns = 400px
+./build/hellfire_smoketest HellfireSaga.gen out 2400 10   # 10 extra columns = 400px
+```
+
+**Recompiler checks** (Linux, need gcc until the bundled compiler lands):
+
+```sh
+# every 68000 opcode, recompiled and run against the interpreter from random states
+./build/hellfire_recomp_fuzz 1 4
+# the whole game: N frames on the interpreter, then N on native code, same input;
+# RAM, VRAM, CRAM, VSRAM, Z80 RAM, CPU registers and audio compared every frame
+HF_NATIVE_CC="gcc -O1" ./build/hellfire_recomp_check HellfireSaga.gen 3000 10
 ```
 
 ## How it fits together
@@ -84,18 +95,50 @@ src/widescreen.c  in-memory patches so the game draws level + sprites 400px wide
 src/gamefx.c      boss/cutscene bars, SEGA screen fix, game bug fixes, invincibility
 src/soundtrack.c  soundtrack player (boots the ROM, freezes it, runs its sound driver)
 src/emu.c         the only file that talks to the hardware core
+src/native.c      runs recompiled code in the 68000's place, interpreter fallback
+src/recomp/       68000 decoder, C generator, runtime prelude, compiler glue
 src/osd.h         glue header the core expects
 third_party/gpgx-wide   Genesis Plus GX Wide: 68000, Z80, VDP, YM2612, PSG in C
 ```
 
+## Native code
+
+At game start the launcher reads your ROM (with the widescreen and fix
+patches applied) and the recompiler in `src/recomp` turns its 68000 code
+into C: about 55,000 instructions found by following the code from the
+reset and interrupt vectors, jump tables and pointer tables. That C is
+compiled in memory and the CPU loop calls it instead of interpreting. The
+generated C lives only in memory on your PC; nothing from the ROM is
+stored in this repo.
+
+- The C works on the same CPU state as the interpreter (registers, flags,
+  cycle counts, bus timing), so the two can hand over at any instruction.
+  The graphics and sound chips are unchanged.
+- Rare instructions (BCD maths, MOVEP, TRAP, RTE, changes to SR) call the
+  interpreter's own handler for that one instruction.
+- Code the recompiler didn't find runs on the interpreter. Its addresses
+  are saved to `native_entries.txt` in the settings folder and included the
+  next time, so coverage grows.
+- Code the game patches at runtime (invincibility, soundtrack player) is
+  checked by a hash per 2 KB block; changed blocks fall back to the
+  interpreter.
+- **Game code** in the launcher's options switches between native and
+  emulated.
+
+Every opcode form was checked against the interpreter (614,400 random
+states, 0 differences), and 3,000+ frames of the game run identical, byte
+for byte, to step 1.
+
 ## Roadmap
 
-1. **Playable base**: launcher, ROM check, 400×224, Windows + Linux builds. *(this step)*
+1. **Playable base**: launcher, ROM check, 400×224, Windows + Linux builds. Done.
 2. **Native code**: a static recompiler that translates the ROM's 68000 code
    into C, which replaces the emulated CPU. The graphics and sound chips stay
    as C reimplementations, because the game drives them directly. The
    recompiled C is generated on the player's PC from their own ROM, never
    committed here. Each recompiled frame is checked against step 1's output.
+   *(this step: recompiler, checks and game integration done; bundled
+   compiler for players' PCs in progress)*
 3. **Widescreen polish**: level and sprites already fill 400px (`src/widescreen.c`); still to check: boss arenas, camera limits at level edges, other zones.
 4. **Boss black bars**: done in step 1 (`src/gamefx.c`). Bosses are detected when the game pins the camera (the final boss by its zone); cutscenes when it takes control away from the player.
 5. ~~**Soundtrack**: play every track from the player's ROM in the launcher.~~ Done.

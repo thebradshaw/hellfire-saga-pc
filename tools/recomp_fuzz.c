@@ -1,7 +1,7 @@
 /*
  * recomp_fuzz.c - checks recompiled instructions against the interpreter.
  *
- *   recomp_fuzz [seed] [rounds] [opcode]     (Linux, needs gcc on PATH)
+ *   hellfire_recomp_fuzz [seed] [rounds] [opcode]   (Linux, needs gcc on PATH)
  *
  * Each round places a few thousand instructions with random extension
  * words in a 64 KB memory (mirrored over the whole address space),
@@ -28,6 +28,10 @@ uint8_t cart_size;
 int load_archive(char *f, unsigned char *b, int m, char *e) { (void)f; (void)b; (void)m; (void)e; return 0; }
 void osd_input_update(void) {}
 unsigned long crc32(unsigned long c, const unsigned char *b, unsigned int l) { (void)b; (void)l; return c; }
+/* native.c needs these; the fuzz test builds its own modules */
+uint8_t emu_rom_read8(uint32_t a) { (void)a; return 0xff; }
+void *tcc_build(const char *s, void **i, char *e, size_t n) { (void)s; (void)i; (void)e; (void)n; return NULL; }
+void tcc_build_free(void *h) { (void)h; }
 
 static uint8_t mem[0x10000];      /* interpreter byte order (pairs swapped) */
 static uint8_t start_mem[0x10000];

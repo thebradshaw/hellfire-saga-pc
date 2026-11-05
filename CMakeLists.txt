@@ -147,3 +147,10 @@ endif()
 if(UNIX)
   target_link_libraries(hellfire_smoketest PRIVATE m)
 endif()
+
+# Per-instruction fuzz test of the recompiler (Linux, calls gcc).
+if(UNIX AND NOT APPLE)
+  add_executable(hellfire_recomp_fuzz tools/recomp_fuzz.c src/native.c
+    src/recomp/m68kdec.c src/recomp/gen68k.c ${RT_EMBED})
+  target_link_libraries(hellfire_recomp_fuzz PRIVATE gpgx m ${CMAKE_DL_LIBS})
+endif()
