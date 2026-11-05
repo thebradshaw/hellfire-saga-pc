@@ -1,6 +1,37 @@
-# hellfire-saga-pc
+<h1 align="center">HellFire Saga PC</h1>
 
-A PC port of **Sonic the HellFire Saga**, one of the best Sonic hacks ever, for Windows and Linux. It's written in plain C with SDL2.
+<p align="center">A native PC port of <b>Sonic the HellFire Saga</b>, one of the best Sonic hacks ever, for Windows and Linux.<br>400×224 widescreen, black bars for boss fights, a soundtrack player, and the game's code recompiled to native C.</p>
+
+<p align="center">
+  <a href="https://github.com/thebradshaw/hellfire-saga-pc/releases/latest/download/hellfire-saga-pc-windows-x64.zip"><img alt="Download for Windows" src="https://img.shields.io/badge/Download-Windows%20(x64)-c0392b?style=for-the-badge&logo=windows&logoColor=white" height="44"></a>
+  &nbsp;
+  <a href="https://github.com/thebradshaw/hellfire-saga-pc/releases/latest/download/hellfire-saga-pc-linux-x64.tar.gz"><img alt="Download for Linux" src="https://img.shields.io/badge/Download-Linux%20(x64)-555555?style=for-the-badge&logo=linux&logoColor=white" height="44"></a>
+</p>
+<p align="center"><a href="https://github.com/thebradshaw/hellfire-saga-pc/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/thebradshaw/hellfire-saga-pc?label=latest%20release&style=flat-square"></a></p>
+
+<p align="center"><img alt="Forest of Decay in 400x224 widescreen" src="docs/screenshots/gameplay-widescreen.png" width="820"></p>
+
+**To play:** download, unzip, run `hellfire` (`hellfire.exe` on Windows), drag your ROM onto the window and press **Play**.
+
+**You need your own ROM.** No game data is in this repository or its downloads. Patch your own Sonic 3 ROM with the HellFire Saga v2.11 patch, and the launcher checks the result:
+
+- HellFire Saga v2.11, already patched (the launcher doesn't patch)
+- SHA-1 `f8f57b7295c93ee30fc02340051d081a060f8e17`
+
+A fan project, not affiliated with or endorsed by SEGA or the HellFire Saga team. Sonic the Hedgehog is a trademark of SEGA.
+
+The download buttons always get the latest release; older ones are on the [releases page](../../releases). The Linux build needs SDL2 (`sudo apt install libsdl2-2.0-0`).
+
+| | |
+|---|---|
+| ![The launcher, with art by SAWhane](docs/screenshots/launcher.png) | ![The title screen](docs/screenshots/title.png) |
+| The launcher, with art by SAWhane | The title screen |
+
+![Widescreen in Forest of Decay](docs/screenshots/forest-of-decay.png)
+
+<p align="center"><a href="https://buymeacoffee.com/chrisbradshaw"><img alt="Buy me a coffee" src="docs/coffee.svg" width="400"></a></p>
+
+## Features
 
 - Widescreen at **400×224**: 16:9 at the Genesis's native height
 - A launcher with art by **SAWhane**
@@ -17,10 +48,6 @@ A PC port of **Sonic the HellFire Saga**, one of the best Sonic hacks ever, for 
   wheel scrolls)
 - Game logic recompiled to native C from your own ROM at launch (see
   [Native code](#native-code)); the emulated 68000 stays as a fallback
-
-> **This repo contains no game data.** You need your own copy of the
-> HellFire Saga v2.11 ROM, already patched. The launcher checks it by
-> SHA-1 (`f8f57b7295c93ee30fc02340051d081a060f8e17`).
 
 ## Playing
 
@@ -136,20 +163,21 @@ states, 0 differences). The game runs identical to step 1, byte for byte,
 for 20,000 frames in widescreen and 8,000 at 320px on Linux, and 3,000 on
 the Windows build.
 
-## Roadmap
+## Status
 
-1. **Playable base**: launcher, ROM check, 400×224, Windows + Linux builds. Done.
-2. **Native code**: a static recompiler that translates the ROM's 68000 code
-   into C, which replaces the emulated CPU. The graphics and sound chips stay
-   as C reimplementations, because the game drives them directly. The
-   recompiled C is generated on the player's PC from their own ROM, never
-   committed here. Each recompiled frame is checked against step 1's output.
-   *(this step)*
-3. **Widescreen polish**: level and sprites already fill 400px (`src/widescreen.c`); still to check: boss arenas, camera limits at level edges, other zones.
-4. **Boss black bars**: done in step 1 (`src/gamefx.c`). Bosses are detected when the game pins the camera (the final boss by its zone); cutscenes when it takes control away from the player.
-5. ~~**Soundtrack**: play every track from the player's ROM in the launcher.~~ Done.
+**1.0.** Everything planned is in: the playable base, native code, widescreen, boss bars and the soundtrack player.
+
+- **Playable base**: launcher, ROM check, 400×224, Windows and Linux builds.
+- **Native code**: the ROM's 68000 code is recompiled to C on your PC and replaces the emulated CPU, checked frame by frame against the emulated build.
+- **Widescreen**: the level and sprites fill 400px (`src/widescreen.c`).
+- **Boss black bars** (`src/gamefx.c`): bosses are detected when the game pins the camera (the final boss by its zone), and cutscenes when it takes control away from the player.
+- **Soundtrack**: every track from your ROM, played in the launcher.
+
+Found a spot where widescreen looks wrong, such as a boss arena or a level edge? Please [open an issue](../../issues) with a screenshot.
 
 ## Credits
+
+If you enjoy it, you can [buy me a coffee](https://buymeacoffee.com/chrisbradshaw).
 
 - Sonic the HellFire Saga by the HellFire Saga team
 - Launcher art by SAWhane

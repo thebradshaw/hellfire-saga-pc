@@ -86,8 +86,9 @@ jobs:
         run: |
           TAG=${RELEASE:-$GITHUB_REF_NAME}
           echo "TAG=$TAG" >> "$GITHUB_ENV"
-          (cd artifacts/hellfire-saga-pc-windows-x64 && zip -r ../../hellfire-saga-pc-${TAG}-windows-x64.zip hellfire-saga-pc)
-          (cd artifacts/hellfire-saga-pc-linux-x64 && chmod +x hellfire-saga-pc/hellfire && tar czf ../../hellfire-saga-pc-${TAG}-linux-x64.tar.gz hellfire-saga-pc)
+          # fixed names, so the README's download buttons always fetch the latest
+          (cd artifacts/hellfire-saga-pc-windows-x64 && zip -r ../../hellfire-saga-pc-windows-x64.zip hellfire-saga-pc)
+          (cd artifacts/hellfire-saga-pc-linux-x64 && chmod +x hellfire-saga-pc/hellfire && tar czf ../../hellfire-saga-pc-linux-x64.tar.gz hellfire-saga-pc)
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -95,5 +96,5 @@ jobs:
           gh release create "$TAG" --target "$GITHUB_SHA" \
             --title "HellFire Saga PC $TAG" \
             --notes-file .github/RELEASE_NOTES.md \
-            hellfire-saga-pc-$TAG-windows-x64.zip \
-            hellfire-saga-pc-$TAG-linux-x64.tar.gz
+            hellfire-saga-pc-windows-x64.zip \
+            hellfire-saga-pc-linux-x64.tar.gz
