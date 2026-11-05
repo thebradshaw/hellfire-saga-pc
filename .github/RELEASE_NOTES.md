@@ -21,3 +21,5 @@ Credits: the HellFire Saga team; SAWhane; Genesis Plus GX by Eke-Eke and
 Charles MacDonald (non-commercial license: these builds may not be sold);
 TinyCC (LGPL 2.1). Sonic the Hedgehog 3 © SEGA; this is an unofficial, free
 fan project.
+
+Enjoying it? You can [buy me a coffee](https://buymeacoffee.com/chrisbradshaw).
