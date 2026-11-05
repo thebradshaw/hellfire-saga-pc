@@ -6,11 +6,15 @@
 /* ---- game RAM (HellFire Saga v2.11) ------------------------------------- */
 
 #define RAM_GAME_MODE   0xE6B8   /* byte: main loop dispatch, see 0x3D4    */
+#define MODE_RESET      0x00     /* power-on; also the level select        */
 #define MODE_LEVEL      0x04
+#define MODE_INIT       0x08     /* power-on setup                          */
 #define MODE_TITLE      0x0C     /* the notices and the title screen        */
 #define MODE_TITLE_BACK 0x10     /* title screen again, after leaving a game */
 #define MODE_LOADING    0x84     /* level loading + title card              */
 #define MODE_SEGA       0x28     /* SEGA and Red Miso Studios logos         */
+#define RAM_ZONE        0xEAE8   /* byte: zone (the act is the next byte)   */
+#define ZONE_FINAL_BOSS 0x03     /* Devil's Descent: the final boss arena   */
 #define RAM_CAM_MIN_X   0xCF52   /* word: camera left limit                 */
 #define RAM_CAM_MAX_X   0xCF54   /* word: camera right limit                */
 #define RAM_CTRL_LOCK   0xE6ED   /* byte: player input ignored (cutscenes)  */
@@ -50,15 +54,27 @@ void gamefx_reset(void)
 void gamefx_frame(void)
 {
   int mode = emu_read_ram8(RAM_GAME_MODE);
-  int want = 0, now = 0;
+  int want = 0, now = 0, hold = 0;
 
   if (mode != MODE_LEVEL) had_control = 0;
   if (mode != MODE_LOADING) { loading_frames = 0; drop_when_black = 0; }
 
-  if (mode == MODE_TITLE || mode == MODE_TITLE_BACK)
+  if (mode == MODE_RESET || mode == MODE_INIT)
   {
-    /* Notices and title screen: the art is 320px wide. */
+    /* Brief black screens at power-on (and the level select, which is
+       reached from the title): leave the bars as they are. */
+    hold = 1;
+  }
+  else if (mode != MODE_LEVEL && mode != MODE_LOADING && mode != MODE_SEGA)
+  {
+    /* Title, notices, menus, results, the final boss's tunnel phase and
+       the ending: all drawn for 320px, only levels are widened. */
     want = now = 1;
+  }
+  else if (mode == MODE_LOADING && emu_read_ram8(RAM_ZONE) == ZONE_FINAL_BOSS)
+  {
+    want = now = 1;                   /* bars stay on into the final boss */
+    bars_pos = 1.0;
   }
   else if (mode == MODE_LOADING)
   {
@@ -81,6 +97,9 @@ void gamefx_frame(void)
     int min_x = emu_read_ram16(RAM_CAM_MIN_X);
     int max_x = emu_read_ram16(RAM_CAM_MAX_X);
     int boss  = max_x - min_x < 16;
+    /* The final boss (snake Eggman) scrolls on its own instead, and its
+       backdrop is only 320px wide. */
+    if (emu_read_ram8(RAM_ZONE) == ZONE_FINAL_BOSS) { boss = now = 1; bars_pos = 1.0; }
     /* Cutscenes and text boxes take control away from the player. */
     int locked = emu_read_ram8(RAM_CTRL_LOCK) != 0;
     /* The title card at the start of a level also locks control: only
@@ -90,8 +109,9 @@ void gamefx_frame(void)
     want = boss || scene;
   }
 
-  if (want) { want_run++; unwant_run = 0; }
-  else      { unwant_run++; want_run = 0; }
+  if (hold)      { want_run = unwant_run = 0; }
+  else if (want) { want_run++; unwant_run = 0; }
+  else           { unwant_run++; want_run = 0; }
   if (now || want_run >= BAR_IN_FRAMES) bars_target = 1;
   if (unwant_run >= BAR_OUT_FRAMES)     bars_target = 0;
 

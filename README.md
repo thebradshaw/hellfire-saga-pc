@@ -4,7 +4,7 @@ A PC port of **Sonic the HellFire Saga**, one of the best Sonic hacks ever, for 
 
 - Widescreen at **400×224**: 16:9 at the Genesis's native height
 - A launcher with art by **SAWhane**
-- Black bars that slide in during boss fights, cutscenes and the title screen, so those play at the original 320px width, then slide back out
+- Black bars that slide in during boss fights and cutscenes, so those play at the original 320px width, then slide back out; they stay on for screens made only 320px wide (title, menus, results, the final boss and the ending)
 - 60 or 120 FPS presentation, with VSync on or off; frame pacing locks to
   the display's measured refresh rate for smooth motion
 - CRT effect: scanlines, or scanlines plus an RGB mask
@@ -97,7 +97,7 @@ third_party/gpgx-wide   Genesis Plus GX Wide: 68000, Z80, VDP, YM2612, PSG in C
    recompiled C is generated on the player's PC from their own ROM, never
    committed here. Each recompiled frame is checked against step 1's output.
 3. **Widescreen polish**: level and sprites already fill 400px (`src/widescreen.c`); still to check: boss arenas, camera limits at level edges, other zones.
-4. **Boss black bars**: done in step 1 (`src/gamefx.c`). Bosses are detected when the game pins the camera; cutscenes when it takes control away from the player.
+4. **Boss black bars**: done in step 1 (`src/gamefx.c`). Bosses are detected when the game pins the camera (the final boss by its zone); cutscenes when it takes control away from the player.
 5. ~~**Soundtrack**: play every track from the player's ROM in the launcher.~~ Done.
 
 ## Credits

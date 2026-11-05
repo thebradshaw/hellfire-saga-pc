@@ -12,8 +12,8 @@
  *  - rows start 40px further left and are 26 blocks long instead of 22
  *  - full-screen redraws start 64px left of the camera, 29 columns
  *  - new columns while scrolling appear 48px further out on either side
- * The extra blocks spill a little further into the game's tile-update
- * buffer at $FFD0B6, into RAM the game doesn't otherwise use.
+ * The wider rows would overflow the game's tile-update buffer at $FFD0B6
+ * in busy frames, so hook_row empties it first (see there).
  *
  * All addresses below are for HellFire Saga v2.11 (SHA-1 f8f57b72...).
  * Each patch lists the bytes it expects to find, so a different ROM is
@@ -33,14 +33,26 @@ typedef struct
 #define HOOK_BASE 0x3F0000u
 
 /* hook_row: entry of the level row drawer. Start rows 40px further left and,
-   for screen-width rows (22 blocks), draw 26 blocks instead. Called with a
-   4-byte jsr.w because the row loop branches back right after the entry. */
+   for screen-width rows (22 blocks), draw 26 blocks instead.
+   The rows go into the game's tile-update buffer at $FFD0B6 (a6 points at
+   its end), which is sent to VRAM once a frame. In Sin City and Malicious
+   Glance one frame can hold a row, a column and a 32-block background row,
+   filling it right up to $FFD370, and the wider row pushes that past the
+   end into other game RAM (showing up as junk tiles). So before any row,
+   anything already in the buffer is sent to VRAM now, using the game's own
+   routine, and the buffer starts over. */
 static const uint8_t hook_row[] = {
   0x04, 0x44, 0x00, 0x28,             /* subi.w #$28,d4          */
   0x0C, 0x46, 0x00, 0x15,             /* cmpi.w #$15,d6          */
   0x66, 0x02,                         /* bne.s  +2               */
   0x7C, 0x19,                         /* moveq  #$19,d6          */
-  0xCA, 0x78, 0xD0, 0x18,             /* and.w  ($D018).w,d5     (original) */
+  0xBC, 0xFC, 0xD0, 0xB6,             /* cmpa.w #$D0B6,a6        */
+  0x67, 0x10,                         /* beq.s  done             (buffer empty) */
+  0x48, 0xE7, 0x90, 0x84,             /* movem.l d0/d3/a0/a5,-(sp) */
+  0x4E, 0xB8, 0x2C, 0xD6,             /* jsr    $2CD6.w          (send buffer to VRAM) */
+  0x4C, 0xDF, 0x21, 0x09,             /* movem.l (sp)+,d0/d3/a0/a5 */
+  0x4D, 0xF8, 0xD0, 0xB6,             /* lea    ($D0B6).w,a6     */
+  0xCA, 0x78, 0xD0, 0x18,             /* done: and.w ($D018).w,d5 (original) */
   0x4E, 0x75                          /* rts                     */
 };
 
@@ -53,6 +65,7 @@ static const uint8_t hook_left_col[] = {
 };
 
 #define HOOK_LEFT_COL  (HOOK_BASE + 0x00)
+#define HOOK_ROW_LONG  (HOOK_BASE + 0x20)
 #define SURFACE_MAPS   (HOOK_BASE + 0x100)   /* see build_surface_maps */
 
 /* hook_sprite: object X relative to the camera, shifted right by 40 so the
@@ -63,8 +76,8 @@ static const uint8_t hook_sprite[] = {
   0x36, 0x00,                         /* move.w d0,d3            (original) */
   0x4E, 0x75                          /* rts                     */
 };
-/* hook_sprite and hook_row live in the 68000's unused exception vectors
-   16-23 ($40-$5F, 32 bytes), so a 4-byte jsr.w can reach them. */
+/* hook_sprite and a jump to hook_row live in the 68000's unused exception
+   vectors 16-23 ($40-$5F, 32 bytes), so a 4-byte jsr.w can reach them. */
 #define HOOK_SPRITE 0x40u
 #define HOOK_ROW    0x4Au
 
@@ -179,7 +192,9 @@ int widescreen_apply(void)
 
   write(HOOK_LEFT_COL, hook_left_col, sizeof(hook_left_col));
   write(HOOK_SPRITE, hook_sprite, sizeof(hook_sprite));
-  write(HOOK_ROW, hook_row, sizeof(hook_row));
+  write(HOOK_ROW_LONG, hook_row, sizeof(hook_row));
+  write(HOOK_ROW, (const uint8_t[]){ 0x4E, 0xF9, (HOOK_ROW_LONG >> 24) & 0xFF, (HOOK_ROW_LONG >> 16) & 0xFF,
+                                     (HOOK_ROW_LONG >> 8) & 0xFF, HOOK_ROW_LONG & 0xFF }, 6);  /* jmp.l */
   {
     uint8_t maps[320];
     write(SURFACE_MAPS, maps, build_surface_maps(maps));

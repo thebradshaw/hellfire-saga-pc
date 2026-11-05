@@ -3,7 +3,9 @@
  * the game's RAM or toggling small in-memory ROM patches:
  *
  *  - Black bars that slide in to the original 320px width during boss
- *    fights, cutscenes/text boxes and the title screen, and slide back out.
+ *    fights and cutscenes/text boxes, and slide back out; and that stay on
+ *    for screens drawn only 320px wide (title, menus, the final boss, the
+ *    ending).
  *  - A fix for the SEGA screen, where the Miso logo waiting off the right
  *    edge wraps around into the extra pixels on the left.
  *  - An invincibility toggle: enemies, projectiles and drowning can't hurt
