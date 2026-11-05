@@ -9,9 +9,10 @@
  * The game's camera X is the left edge of its original 320px view. In wide
  * mode the emulator shows 40 more pixels on each side, so the visible range
  * becomes camera-40 .. camera+360. Level art is drawn in 16px blocks:
- *  - rows start 40px further left and are 26 blocks long instead of 22
+ *  - rows start 64px further left and are 28 blocks long instead of 22
  *  - full-screen redraws start 64px left of the camera, 29 columns
- *  - new columns while scrolling appear 48px further out on either side
+ *  - new columns while scrolling appear 48px further out on either side,
+ *    and rows reach from the left column to the right one
  * The wider rows would overflow the game's tile-update buffer at $FFD0B6
  * in busy frames, so hook_row empties it first (see there).
  *
@@ -32,8 +33,12 @@ typedef struct
 /* Hook routines live in free ROM space past the end of the game. */
 #define HOOK_BASE 0x3F0000u
 
-/* hook_row: entry of the level row drawer. Start rows 40px further left and,
-   for screen-width rows (22 blocks), draw 26 blocks instead.
+/* hook_row: entry of the level row drawer. Start rows 64px further left and,
+   for screen-width rows (22 blocks), draw 28 blocks instead. That covers
+   exactly the blocks from the newest left column (64px left of the camera)
+   to the newest right column (368px right of it). Rows any shorter leave
+   gaps: a block the right column drew earlier, while it was off the top or
+   bottom of the screen, would never be drawn and show stale tiles.
    The rows go into the game's tile-update buffer at $FFD0B6 (a6 points at
    its end), which is sent to VRAM once a frame. In Sin City and Malicious
    Glance one frame can hold a row, a column and a 32-block background row,
@@ -42,10 +47,10 @@ typedef struct
    anything already in the buffer is sent to VRAM now, using the game's own
    routine, and the buffer starts over. */
 static const uint8_t hook_row[] = {
-  0x04, 0x44, 0x00, 0x28,             /* subi.w #$28,d4          */
+  0x04, 0x44, 0x00, 0x40,             /* subi.w #$40,d4          */
   0x0C, 0x46, 0x00, 0x15,             /* cmpi.w #$15,d6          */
   0x66, 0x02,                         /* bne.s  +2               */
-  0x7C, 0x19,                         /* moveq  #$19,d6          */
+  0x7C, 0x1B,                         /* moveq  #$1B,d6          */
   0xBC, 0xFC, 0xD0, 0xB6,             /* cmpa.w #$D0B6,a6        */
   0x67, 0x10,                         /* beq.s  done             (buffer empty) */
   0x48, 0xE7, 0x90, 0x84,             /* movem.l d0/d3/a0/a5,-(sp) */
