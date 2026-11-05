@@ -33,18 +33,18 @@ static void         *module;       /* compiled code, freed by tcc_build_free */
 
 /* ---- host functions for generated code ---------------------------------- */
 
-static void h_exec_op(u32 op)          { m68k_exec_op(op); }
-static void h_set_sr(u32 v)            { m68k_set_sr_ext(v); }
-static void h_trap(u32 vector)         { m68k_trap_ext(vector); }
-static void h_aerr(u32 a, u32 mode, u32 op) { m68k_address_error_ext(a, mode, op); }
-static int  h_op_cycles(u32 op)        { return m68k_op_cycles(op); }
+static void h_exec_op(uint32_t op)          { m68k_exec_op(op); }
+static void h_set_sr(uint32_t v)            { m68k_set_sr_ext(v); }
+static void h_trap(uint32_t vector)         { m68k_trap_ext(vector); }
+static void h_aerr(uint32_t a, uint32_t mode, uint32_t op) { m68k_address_error_ext(a, mode, op); }
+static int  h_op_cycles(uint32_t op)        { return m68k_op_cycles(op); }
 
 typedef struct {
-  void (*exec_op)(u32 op);
-  void (*set_sr)(u32 v);
-  void (*trap)(u32 vector);
-  void (*aerr)(u32 addr, u32 mode, u32 op);
-  int  (*op_cycles)(u32 op);
+  void (*exec_op)(uint32_t op);
+  void (*set_sr)(uint32_t v);
+  void (*trap)(uint32_t vector);
+  void (*aerr)(uint32_t addr, uint32_t mode, uint32_t op);
+  int  (*op_cycles)(uint32_t op);
 } Host;
 
 static const Host host = { h_exec_op, h_set_sr, h_trap, h_aerr, h_op_cycles };

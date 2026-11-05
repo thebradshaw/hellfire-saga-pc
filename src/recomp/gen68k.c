@@ -206,7 +206,6 @@ static int bits_of(int size) { return size * 8; }
 /* "goto L..." when addr is code in this region, else leave the region. */
 static void go(G *g, uint32_t addr)
 {
-  addr &= 0xffffff;
   if (addr >= g->rstart && addr < g->rend && is_code(g, addr))
     P(g, "goto L%06X;", addr);
   else
