@@ -533,8 +533,8 @@ static int emit_insn(G *g, const Insn *in)
         alu_math(g, in->kind, size);
         if (in->kind != K_CMP) wr(g, in, &in->dst, size, "ea2", "res");
         break;
-      /* fall through */  /* Dn,<ea> form */
-      /* fall through: Dn,<ea> */
+      }
+      /* fall through */
     case K_EOR:
     case K_ADDI: case K_SUBI: case K_ANDI: case K_ORI: case K_EORI: case K_CMPI:
     case K_ADDQ: case K_SUBQ:
