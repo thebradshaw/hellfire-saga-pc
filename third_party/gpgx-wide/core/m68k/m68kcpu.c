@@ -31,6 +31,63 @@ static int irq_latency;
 
 m68ki_cpu_core m68k;
 
+/* ======================================================================== */
+/* ============ hellfire-saga-pc: hooks for recompiled code =============== */
+/* ======================================================================== */
+
+int (*m68k_native_hook)(void);
+
+/* 1 if the opcode is a real 68000 instruction (not illegal / line A / F). */
+int m68k_op_valid(unsigned int op)
+{
+  void (*h)(void) = m68ki_instruction_jump_table[op & 0xffff];
+  return h != m68k_op_illegal && h != m68k_op_1010 && h != m68k_op_1111;
+}
+
+/* Base cycle count (master clocks) the interpreter adds after an opcode. */
+int m68k_op_cycles(unsigned int op)
+{
+  return CYC_INSTRUCTION[op & 0xffff];
+}
+
+/* Runs the interpreter's handler for one opcode. REG_PC must point just past
+   the opcode word, as after a fetch. Does not add the base cycles. */
+void m68k_exec_op(unsigned int op)
+{
+  REG_IR = op & 0xffff;
+  m68ki_instruction_jump_table[REG_IR]();
+}
+
+/* One full interpreter step, the same as one turn of m68k_run's loop.
+   Used by tests to compare against recompiled code. */
+void m68k_step(void)
+{
+  REG_IR = m68ki_read_imm_16();
+  if (m68k.cycles >= (m68k.refresh_cycles + (128*7)))
+  {
+    m68k.refresh_cycles = (m68k.cycles / (128*7)) * (128*7);
+    m68k.cycles += (2*7);
+  }
+  m68ki_instruction_jump_table[REG_IR]();
+  USE_CYCLES(CYC_INSTRUCTION[REG_IR]);
+}
+
+void m68k_set_sr_ext(unsigned int value) { m68ki_set_sr(value); }
+unsigned int m68k_get_sr_ext(void) { return m68ki_get_sr(); }
+void m68k_set_ccr_ext(unsigned int value) { m68ki_set_ccr(value); }
+void m68k_trap_ext(unsigned int vector) { m68ki_exception_trap(vector); }
+
+/* Address error raised by recompiled code: same as the interpreter's
+   longjmp path, without the longjmp. */
+void m68k_address_error_ext(unsigned int address, unsigned int write_mode, unsigned int op)
+{
+  REG_IR = op & 0xffff;
+  m68ki_cpu.aerr_address = address;
+  m68ki_cpu.aerr_write_mode = write_mode;
+  m68ki_cpu.aerr_fc = FLAG_S | FUNCTION_CODE_USER_DATA;
+  m68ki_exception_address_error();
+}
+
 
 /* ======================================================================== */
 /* =============================== CALLBACKS ============================== */
@@ -284,6 +341,12 @@ void m68k_run(unsigned int cycles)
 
   while (m68k.cycles < cycles)
   {
+    /* hellfire-saga-pc: recompiled native code runs here when present. It
+       returns 0 when it has no code for the current PC, and the
+       interpreter below runs one instruction instead. */
+    if (m68k_native_hook && m68k_native_hook())
+      continue;
+
     /* Set tracing accodring to T1. */
     m68ki_trace_t1() /* auto-disable (see m68kcpu.h) */
 

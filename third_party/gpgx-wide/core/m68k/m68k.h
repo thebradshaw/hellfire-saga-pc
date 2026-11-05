@@ -362,6 +362,18 @@ extern void s68k_init(void);
 extern void m68k_pulse_reset(void);
 extern void s68k_pulse_reset(void);
 
+/* hellfire-saga-pc: recompiled code hooks (see m68kcpu.c) */
+extern int (*m68k_native_hook)(void);
+extern int  m68k_op_valid(unsigned int op);
+extern int  m68k_op_cycles(unsigned int op);
+extern void m68k_exec_op(unsigned int op);
+extern void m68k_step(void);
+extern void m68k_set_sr_ext(unsigned int value);
+extern unsigned int m68k_get_sr_ext(void);
+extern void m68k_set_ccr_ext(unsigned int value);
+extern void m68k_trap_ext(unsigned int vector);
+extern void m68k_address_error_ext(unsigned int address, unsigned int write_mode, unsigned int op);
+
 /* Run until given cycle count is reached */
 extern void m68k_run(unsigned int cycles);
 extern void s68k_run(unsigned int cycles);
