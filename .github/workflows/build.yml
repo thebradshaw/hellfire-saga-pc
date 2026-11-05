@@ -1,0 +1,60 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  SDL_VERSION: 2.30.9
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install SDL2
+        run: sudo apt-get update && sudo apt-get install -y libsdl2-dev
+      - name: Build
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build -j
+      - name: Package
+        run: |
+          mkdir -p dist/hellfire-saga-pc
+          cp build/hellfire dist/hellfire-saga-pc/
+          cp -r assets dist/hellfire-saga-pc/
+          cp README.md third_party/gpgx-wide/LICENSE.txt dist/hellfire-saga-pc/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hellfire-saga-pc-linux-x64
+          path: dist/
+
+  windows:
+    # Cross-compiled from Linux with MinGW-w64, the same way as a local build.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install MinGW-w64
+        run: sudo apt-get update && sudo apt-get install -y mingw-w64
+      - name: Get SDL2 for MinGW
+        run: |
+          curl -sSL -o sdl.tgz https://github.com/libsdl-org/SDL/releases/download/release-${SDL_VERSION}/SDL2-devel-${SDL_VERSION}-mingw.tar.gz
+          tar xzf sdl.tgz
+      - name: Build
+        run: |
+          cmake -B build-win -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE=cmake/mingw-w64.cmake \
+            -DSDL2_DIR=$PWD/SDL2-${SDL_VERSION}/x86_64-w64-mingw32/lib/cmake/SDL2
+          cmake --build build-win -j --target hellfire
+      - name: Package
+        run: |
+          mkdir -p dist/hellfire-saga-pc
+          cp build-win/hellfire.exe build-win/SDL2.dll dist/hellfire-saga-pc/
+          cp -r assets dist/hellfire-saga-pc/
+          cp README.md third_party/gpgx-wide/LICENSE.txt dist/hellfire-saga-pc/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hellfire-saga-pc-windows-x64
+          path: dist/
