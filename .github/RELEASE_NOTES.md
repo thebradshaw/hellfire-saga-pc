@@ -1,4 +1,4 @@
-A PC port of **Sonic the HellFire Saga** for Windows and Linux.
+A PC port of **Sonic the HellFire Saga** for Windows and Linux, made by Vibe Slop Studios.
 
 **You need your own ROM.** This download contains no game data. Bring the
 HellFire Saga v2.11 ROM, already patched onto your own Sonic 3 ROM (SHA-1
