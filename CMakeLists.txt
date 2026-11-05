@@ -72,7 +72,8 @@ add_executable(hellfire WIN32
   src/widescreen.c
   src/settings.c
   src/launcher.c
-  src/gamefx.c)
+  src/gamefx.c
+  src/soundtrack.c)
 
 target_link_libraries(hellfire PRIVATE gpgx)
 if(TARGET SDL2::SDL2main)

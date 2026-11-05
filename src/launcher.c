@@ -3,6 +3,7 @@
 #include "launcher.h"
 #include "romcheck.h"
 #include "settings.h"
+#include "soundtrack.h"
 
 /* Palette pulled from the HellFire Saga title screen. */
 #define COL_BG_TOP    RGB(26, 6, 14)
@@ -23,6 +24,7 @@ static Image    sonic, logo;
 static Font     f_title, f_body, f_small;   /* gothic, see assets/fonts */
 static RomCheck rom;
 static char     notice[256];
+static int      track_top;                  /* first visible soundtrack row */
 
 /* ---- setup ---------------------------------------------------------------- */
 
@@ -47,7 +49,7 @@ void launcher_init(const char *base_path)
 {
   /* SAWhane's Sonic, cut out and faded into the background. */
   load_scaled(&sonic, base_path, "sonic_sawhane.png", 336, 440);
-  image_fade(&sonic, 12, 120);
+  image_fade(&sonic, 7, 120);
   /* The HellFire Saga lettering from the title screen. */
   load_scaled(&logo, base_path, "logo.png", LOGO_W, LOGO_W * 235 / 578);
   load_font(&f_title, base_path, "gothic_title");
@@ -172,7 +174,17 @@ LauncherResult launcher_event(MenuAction a)
         switch (cursor)
         {
           case 0: return LAUNCH_PLAY;
-          case 1: screen = SCR_SOUNDTRACK; break;
+          case 1:
+            if (!launcher_rom_ready())
+              snprintf(notice, sizeof(notice), "The soundtrack plays from your ROM: set it up first.");
+            else if (!soundtrack_open(settings.rom_path))
+              snprintf(notice, sizeof(notice), "The soundtrack could not be loaded from your ROM.");
+            else
+            {
+              screen = SCR_SOUNDTRACK;
+              cursor = track_top = 0;
+            }
+            break;
           case 2: screen = SCR_OPTIONS; cursor = 0; break;
           case 3: screen = SCR_CREDITS; break;
           case 4: return LAUNCH_QUIT;
@@ -194,10 +206,31 @@ LauncherResult launcher_event(MenuAction a)
       break;
 
     case SCR_CREDITS:
-    case SCR_SOUNDTRACK:
       if (a == MENU_OK || a == MENU_BACK || a == MENU_PAUSE)
       {
-        cursor = screen == SCR_CREDITS ? 3 : 1;
+        cursor = 3;
+        screen = SCR_MAIN;
+      }
+      break;
+
+    case SCR_SOUNDTRACK:
+      if (a == MENU_UP)   move_cursor(-1, soundtrack_count());
+      if (a == MENU_DOWN) move_cursor(+1, soundtrack_count());
+      if (a == MENU_LEFT || a == MENU_RIGHT)
+      {
+        /* Previous / next track, playing it right away. */
+        move_cursor(a == MENU_LEFT ? -1 : +1, soundtrack_count());
+        soundtrack_play(cursor);
+      }
+      if (a == MENU_OK)
+      {
+        if (soundtrack_playing() == cursor) soundtrack_stop();
+        else soundtrack_play(cursor);
+      }
+      if (a == MENU_BACK || a == MENU_PAUSE)
+      {
+        soundtrack_close();
+        cursor = 1;
         screen = SCR_MAIN;
       }
       break;
@@ -354,12 +387,52 @@ static void draw_credits(Canvas *c)
   draw_hint(c, "Press any button");
 }
 
+#define TRACK_ROWS  8
+#define TRACK_ROW_H 24
+
+static void track_label(int i, char *buf, size_t n)
+{
+  const char *title = soundtrack_title(i);
+  int num = soundtrack_number(i);
+  if (num && title[0]) snprintf(buf, n, "%02d   %s", num, title);
+  else if (num)        snprintf(buf, n, "%02d   Track %d", num, num);
+  else                 snprintf(buf, n, "--   %s", title);
+}
+
 static void draw_soundtrack(Canvas *c)
 {
-  draw_heading(c, CONTENT_Y, "Soundtrack");
-  paragraph(c, CONTENT_Y + f_title.line_h + 8, "Coming in a later update: every track, rendered from "
-                                                "your own ROM, playable right here.", COL_TEXT);
-  draw_hint(c, "Press any button");
+  int i, y = CONTENT_Y, count = soundtrack_count(), playing = soundtrack_playing();
+  int left = CENTER_X - 200;
+  char line[160];
+
+  draw_heading(c, y, "Soundtrack");
+  y += f_title.line_h + 4;
+
+  /* Keep the cursor in view. */
+  if (cursor < track_top) track_top = cursor;
+  if (cursor >= track_top + TRACK_ROWS) track_top = cursor - TRACK_ROWS + 1;
+
+  for (i = track_top; i < count && i < track_top + TRACK_ROWS; i++)
+  {
+    int ry = y + (i - track_top) * TRACK_ROW_H;
+    uint32_t col = i == cursor ? COL_ACCENT : (i == playing ? COL_GOOD : COL_TEXT);
+    if (i == cursor) draw_selection(c, ry + 1, TRACK_ROW_H - 1, 440);
+    track_label(i, line, sizeof(line));
+    gfx_font_text(c, &f_body, left, ry + 2, line, col);
+    if (i == playing)
+    {
+      int t = (int)soundtrack_elapsed();
+      snprintf(line, sizeof(line), "%d:%02d", t / 60, t % 60);
+      gfx_font_right(c, &f_body, CENTER_X + 200, ry + 2, line, COL_GOOD);
+    }
+  }
+
+  /* Where the window is in the list. */
+  snprintf(line, sizeof(line), "%d-%d of %d", track_top + 1,
+           track_top + TRACK_ROWS < count ? track_top + TRACK_ROWS : count, count);
+  gfx_font_centered(c, &f_small, CENTER_X, y + TRACK_ROWS * TRACK_ROW_H + 2, line, COL_DIM);
+
+  draw_hint(c, "Enter: play / stop    Left/Right: previous / next    Esc: back");
 }
 
 void launcher_draw(Canvas *c, unsigned ticks)

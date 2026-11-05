@@ -14,6 +14,7 @@
 #include "launcher.h"
 #include "widescreen.h"
 #include "gamefx.h"
+#include "soundtrack.h"
 
 #define WIDE_EXTRA_COLUMNS 10   /* 320 + 10*8 = 400 pixels */
 
@@ -37,6 +38,7 @@ static int start_game(void)
   }
   /* Make the game draw its level and sprites across the extra columns. */
   if (settings.widescreen) widescreen_apply();
+  gamefx_fix_rom();
   gamefx_reset();
   gamefx_set_invincible(settings.invincible);
   game_w = game_h = 0;
@@ -77,6 +79,34 @@ static void present_game(double dt)
   video_present_crt(game_px, w, h, w * 4, settings.scale_mode, settings.crt);
 }
 
+/* The refresh time (seconds), from the last 120 frame times: the median
+   rejects missed and doubled refreshes, then the mean of the samples near
+   it smooths out timing noise. 0 until there are enough samples. */
+static double measure_refresh(double dt)
+{
+  enum { N = 120 };
+  static double hist[N], estimate;
+  static int count, pos;
+  double sorted[N], sum = 0.0;
+  int i, j, used = 0;
+
+  if (dt <= 0.0 || dt > 0.1) return estimate;   /* a stall: not a refresh */
+  hist[pos] = dt;
+  pos = (pos + 1) % N;
+  if (count < N) count++;
+  if (count < 8) return estimate = 0.0;
+  for (i = 0; i < count; i++)
+  {
+    double v = hist[i];
+    for (j = i; j > 0 && sorted[j - 1] > v; j--) sorted[j] = sorted[j - 1];
+    sorted[j] = v;
+  }
+  for (i = 0; i < count; i++)
+    if (hist[i] > sorted[count / 2] * 0.75 && hist[i] < sorted[count / 2] * 1.25) { sum += hist[i]; used++; }
+  estimate = sum / used;
+  return estimate;
+}
+
 int main(int argc, char **argv)
 {
   Mode mode = MODE_LAUNCHER;
@@ -85,7 +115,9 @@ int main(int argc, char **argv)
   int running = 1;
   Uint64 freq, last;
   double acc = 0.0;
-  int half_tick = 0;
+  int tick = 0;
+  double refresh = 0.0;      /* measured time between vsynced presents */
+  int locked_every = 0;
 
   if (SDL_Init(SDL_INIT_EVENTS | SDL_INIT_TIMER) < 0)
   {
@@ -124,7 +156,7 @@ int main(int argc, char **argv)
     SDL_Event e;
     Uint64 now;
     double period, dt;
-    int lockstep;
+    int every, paced_by_vsync;
 
     while (SDL_PollEvent(&e))
     {
@@ -216,24 +248,51 @@ int main(int argc, char **argv)
 
     if (mode == MODE_GAME)
     {
-      /* The game itself updates 60 times a second. With vsync on a screen
-         that matches the chosen rate, run in lockstep with the refresh:
-         60 FPS = one game frame per refresh, 120 FPS = one game frame every
-         second refresh, each shown twice (the bars still move at 120).
-         Otherwise pace game frames with the high-resolution timer. */
-      int hz = video_refresh_rate();
-      int want_hz = settings.fps120 ? 120 : 60;
+      /* The game itself updates ~60 times a second (59.92). With vsync on,
+         measure the real time between refreshes (the reported rate is
+         rounded and sometimes 0) and, when it divides into a game frame
+         (60, 120, 180, 240 Hz...), run one game frame every N refreshes:
+         every game frame is then shown for exactly the same time.
+         Other rates (75, 144 Hz...) can't divide evenly; there game frames
+         are paced by the refresh clock, which spreads the uneven ones out
+         as evenly as possible. Without vsync, a high-resolution timer. */
       period = 1.0 / emu_fps();
-      lockstep = settings.vsync && hz >= want_hz - 1 && hz <= want_hz + 1;
-
-      if (lockstep)
+      every = 0;
+      if (settings.vsync)
       {
-        if (!settings.fps120 || (half_tick ^= 1)) run_one_frame();
+        /* The median of recent frame times is the refresh time: missed
+           refreshes are rare. Some drivers ignore the vsync request; then
+           presents return almost at once and we pace with the timer. */
+        refresh = measure_refresh(dt);
+        if (refresh > 0.0025)
+        {
+          /* Lock on within 1.5%; once locked, stay unless 4% off. */
+          int n = (int)(period / refresh + 0.5);
+          double err = SDL_fabs(n * refresh - period) / period;
+          if (n >= 1 && n <= 4 && (err < 0.015 || (n == locked_every && err < 0.04))) every = n;
+        }
+      }
+      paced_by_vsync = settings.vsync && refresh > 0.0025;
+      locked_every = every;
+
+      if (every)
+      {
+        /* A late refresh (dt about 2x) means one was missed: catch up. */
+        int late = dt > refresh * 1.6 ? (int)(dt / refresh + 0.5) - 1 : 0;
+        if (late > 3) late = 3;
+        tick += 1 + late;
+        while (tick >= every) { run_one_frame(); tick -= every; }
+        acc = 0.0;
       }
       else
       {
         int steps = 0;
-        acc += dt;
+        /* With vsync, advance by whole refreshes, not by the jittery
+           measured time, so the pattern of frames stays regular. */
+        if (paced_by_vsync)
+          acc += dt > refresh * 1.6 ? (int)(dt / refresh + 0.5) * refresh : refresh;
+        else
+          acc += dt;
         if (acc > period * 4) acc = period;   /* after a stall, don't fast-forward */
         while (acc >= period && steps < 4)
         {
@@ -244,7 +303,7 @@ int main(int argc, char **argv)
       }
       present_game(dt);
 
-      if (!settings.vsync)
+      if (!paced_by_vsync)
       {
         /* Sleep until the next frame (or half frame at 120) is due. */
         double wait = settings.fps120 ? period / 2 : period - acc;
@@ -261,12 +320,28 @@ int main(int argc, char **argv)
     }
     else
     {
+      if (soundtrack_is_open())
+      {
+        /* The soundtrack player: run the game's sound driver in real time. */
+        int steps = 0;
+        period = 1.0 / emu_fps();
+        acc += dt;
+        if (acc > period * 4) acc = period;
+        while (acc >= period && steps < 4)
+        {
+          int n = soundtrack_frame(sound);
+          audio_push(sound, n, settings.volume);
+          acc -= period;
+          steps++;
+        }
+      }
       launcher_draw(&launcher, SDL_GetTicks());
       video_present(launcher.px, launcher.w, launcher.h, launcher.pitch * 4, SCALE_FIT);
       if (!settings.vsync) SDL_Delay(16);
     }
   }
 
+  soundtrack_close();
   emu_unload();
   settings_save();
   launcher_shutdown();

@@ -27,6 +27,10 @@ void gamefx_frame(void);
    game frame (0xAARRGGBB, pitch in pixels). Does nothing at 320px. */
 void gamefx_draw(uint32_t *px, int w, int h, int pitch, double dt);
 
+/* Fixes small bugs in the game's own code (like the drowning countdown
+   digits). Call once after loading the ROM. Returns how many applied. */
+int  gamefx_fix_rom(void);
+
 /* Turns invincibility on or off. Returns 0 if the ROM didn't match the
    expected code (nothing changed). Safe to call while the game runs. */
 int  gamefx_set_invincible(int on);

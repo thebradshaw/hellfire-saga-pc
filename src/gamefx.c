@@ -29,6 +29,8 @@ static int    hide_miso_wrap;
 static int    miso_waiting_seen;      /* the Miso logo has been parked off-screen */
 static int    widen_miso;
 static int    had_control;            /* player has moved freely in this level */
+static int    drop_when_black;        /* level loading: bars wait for the fade to black */
+static int    loading_frames;
 
 void gamefx_reset(void)
 {
@@ -39,6 +41,8 @@ void gamefx_reset(void)
   miso_waiting_seen = 0;
   widen_miso = 0;
   had_control = 0;
+  drop_when_black = 0;
+  loading_frames = 0;
 }
 
 void gamefx_frame(void)
@@ -47,6 +51,7 @@ void gamefx_frame(void)
   int want = 0, now = 0;
 
   if (mode != MODE_LEVEL) had_control = 0;
+  if (mode != MODE_LOADING) { loading_frames = 0; drop_when_black = 0; }
 
   if (mode == MODE_TITLE || mode == MODE_TITLE_BACK)
   {
@@ -55,10 +60,17 @@ void gamefx_frame(void)
   }
   else if (mode == MODE_LOADING)
   {
-    /* Level loading and its title card: no bars, and none left over from
-       the title screen (the screen is black when this starts). */
-    bars_target = 0;
-    bars_pos = 0.0;
+    /* Level loading and its title card: no bars. Bars left over from the
+       title screen stay until the title has faded to black (so its sides
+       never show), then vanish at once. A timeout covers a fade that never
+       reaches full black. */
+    if (loading_frames++ == 0 && (bars_target || bars_pos > 0.0)) drop_when_black = 1;
+    if (!drop_when_black || loading_frames > 120)
+    {
+      drop_when_black = 0;
+      bars_target = 0;
+      bars_pos = 0.0;
+    }
     want_run = 0;
   }
   else if (mode == MODE_LEVEL)
@@ -90,7 +102,8 @@ void gamefx_frame(void)
     else if (slide >= 0x180) miso_waiting_seen = 1;
     /* Once the Miso logo has settled, its background art stops 40px short
        of the right edge: stretch the art right of the logo to fill it. */
-    widen_miso = mode == MODE_SEGA && miso_waiting_seen && slide == 0;
+    /* Keep doing so while it slides away to the left (negative offsets). */
+    widen_miso = mode == MODE_SEGA && miso_waiting_seen && (slide == 0 || slide >= 0x8000);
   }
 }
 
@@ -145,6 +158,20 @@ void gamefx_draw(uint32_t *px, int w, int h, int pitch, double dt)
     }
   }
 
+  if (drop_when_black)
+  {
+    /* Is the 320px game area black yet? */
+    int dark = 1;
+    for (y = 0; y < h && dark; y += 4)
+    {
+      const uint32_t *row = px + (size_t)y * pitch;
+      for (x = side; x < w - side; x += 4)
+        if ((row[x] & 0xF0F0F0u) != 0) { dark = 0; break; }
+    }
+    if (dark) { drop_when_black = 0; bars_target = 0; bars_pos = 0.0; }
+    else      { bars_target = 1; }
+  }
+
   step = dt / BAR_SECONDS;
   if (step > 0.25) step = 0.25;   /* after a stall, don't jump */
   if (bars_target && bars_pos < 1.0) { bars_pos += step; if (bars_pos > 1.0) bars_pos = 1.0; }
@@ -167,6 +194,42 @@ void gamefx_draw(uint32_t *px, int w, int h, int pitch, double dt)
       shade_column(px, h, pitch, w - 1 - bar - i, keep[i]);
     }
   }
+}
+
+/* ---- fixes for bugs in the game itself --------------------------------- */
+
+typedef struct
+{
+  uint32_t      addr;
+  uint8_t       expect[6], fix[6];
+  int           len;
+} Fix;
+
+static const Fix rom_fixes[] = {
+  /* Drowning countdown digits. The game copies the digit art (ROM
+     0x179740) to VRAM $FE00, which other art also uses, while the digit
+     sprite shows VRAM $E300 (inside the background map), so the numbers
+     show as red lines. Copy the art to $F600 instead, which is free (just
+     past the scroll table), and point the sprite there. */
+  { 0x13FAE, { 0x03, 0x38 }, { 0x03, 0xD0 }, 2 },                     /* tile $3E0+$3D0 = $7B0 = VRAM $F600 */
+  { 0x1420C, { 0x34, 0x3C, 0xFE, 0x00 }, { 0x34, 0x3C, 0xF6, 0x00 }, 4 }, /* copy destination */
+};
+
+int gamefx_fix_rom(void)
+{
+  size_t i;
+  int k, n = 0;
+  for (i = 0; i < sizeof(rom_fixes) / sizeof(rom_fixes[0]); i++)
+  {
+    const Fix *f = &rom_fixes[i];
+    int ok = 1;
+    for (k = 0; k < f->len; k++)
+      if (emu_rom_read8(f->addr + k) != f->expect[k]) ok = 0;
+    if (!ok) continue;
+    for (k = 0; k < f->len; k++) emu_rom_write8(f->addr + k, f->fix[k]);
+    n++;
+  }
+  return n;
 }
 
 /* ---- invincibility ------------------------------------------------------- */

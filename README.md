@@ -5,9 +5,14 @@ A PC port of **Sonic the HellFire Saga**, one of the best Sonic hacks ever, for 
 - Widescreen at **400×224**: 16:9 at the Genesis's native height
 - A launcher with art by **SAWhane**
 - Black bars that slide in during boss fights, cutscenes and the title screen, so those play at the original 320px width, then slide back out
-- 60 or 120 FPS presentation, with VSync on or off
-- Optional invincibility: nothing hurts you, but pits still kill
-- A soundtrack player built from your own ROM *(coming)*
+- 60 or 120 FPS presentation, with VSync on or off; frame pacing locks to
+  the display's measured refresh rate for smooth motion
+- CRT effect: scanlines, or scanlines plus an RGB mask
+- Optional invincibility: enemies and drowning can't hurt you, but spikes,
+  pits and being crushed still do
+- Fixes for small bugs in the game, like the drowning countdown digits
+- A soundtrack player: every sound test track, played by the game's own
+  sound driver from your ROM
 - Game logic recompiled to native C *(coming, see Roadmap)*
 
 > **This repo contains no game data.** You need your own copy of the
@@ -74,7 +79,8 @@ src/audio.c       short SDL audio queue with drift correction (low latency)
 src/controls.c    keyboard + SDL game controllers
 src/romcheck.c    SHA-1 check of the player's ROM
 src/widescreen.c  in-memory patches so the game draws level + sprites 400px wide
-src/gamefx.c      boss/cutscene bars, SEGA screen fix, invincibility toggle
+src/gamefx.c      boss/cutscene bars, SEGA screen fix, game bug fixes, invincibility
+src/soundtrack.c  soundtrack player (boots the ROM, freezes it, runs its sound driver)
 src/emu.c         the only file that talks to the hardware core
 src/osd.h         glue header the core expects
 third_party/gpgx-wide   Genesis Plus GX Wide: 68000, Z80, VDP, YM2612, PSG in C
@@ -90,7 +96,7 @@ third_party/gpgx-wide   Genesis Plus GX Wide: 68000, Z80, VDP, YM2612, PSG in C
    committed here. Each recompiled frame is checked against step 1's output.
 3. **Widescreen polish**: level and sprites already fill 400px (`src/widescreen.c`); still to check: boss arenas, camera limits at level edges, other zones.
 4. **Boss black bars**: done in step 1 (`src/gamefx.c`). Bosses are detected when the game pins the camera; cutscenes when it takes control away from the player.
-5. **Soundtrack**: render every track from the player's ROM and play it in the launcher.
+5. ~~**Soundtrack**: play every track from the player's ROM in the launcher.~~ Done.
 
 ## Credits
 
