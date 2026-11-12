@@ -16,6 +16,10 @@ void video_set_vsync(int on);
 /* Refresh rate of the monitor the window is on (0 if unknown). */
 int  video_refresh_rate(void);
 
+/* Sizes the window for a game picture of w x h pixels (3x), unless the
+   player has resized it or it is fullscreen. */
+void video_fit_game(int w, int h);
+
 /* Shows a frame of w x h pixels (32-bit XRGB). The image is scaled up to
    the window with square pixels, either by whole numbers (sharpest) or as
    large as fits. Anything outside it is black. */

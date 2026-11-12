@@ -748,6 +748,15 @@ void system_frame_gen(int do_skip)
     vdp_dma_update(mcycles_vdp);
   }
 
+  /* hellfire-saga-pc: extra lines above the picture. The game has finished
+     its vertical blank work by now, so they show the coming frame. */
+  if (config.v_extra_lines && !do_skip)
+  {
+    int extra = -(int)config.v_extra_lines;
+    if (reg[1] & 0x40) parse_satb(extra - 1);
+    for (; extra < 0; extra++) render_line(extra);
+  }
+
   /* parse first line of sprites */
   if (reg[1] & 0x40)
   {
@@ -834,6 +843,14 @@ void system_frame_gen(int do_skip)
     mcycles_vdp += MCYCLES_PER_LINE;
   }
   while (++line < bitmap.viewport.h);
+
+  /* hellfire-saga-pc: extra lines below the picture, drawn before the
+     game's vertical blank work changes anything. */
+  if (config.v_extra_below && !do_skip)
+  {
+    int extra;
+    for (extra = 0; extra < config.v_extra_below; extra++) render_line(bitmap.viewport.h + extra);
+  }
 
   /* check viewport changes */
   if (bitmap.viewport.w != bitmap.viewport.ow)

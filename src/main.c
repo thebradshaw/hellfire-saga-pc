@@ -19,7 +19,8 @@
 #include "native.h"
 #include "hf_file.h"
 
-#define WIDE_EXTRA_COLUMNS 10   /* 320 + 10*8 = 400 pixels */
+#define WIDE_EXTRA_COLUMNS  10   /* 320 + 10*8 = 400 pixels */
+#define MANIA_EXTRA_COLUMNS 13   /* 320 + 13*8 = 424 pixels, and 240 lines: Sonic Mania's picture */
 
 typedef enum { MODE_LAUNCHER, MODE_GAME, MODE_PAUSED } Mode;
 
@@ -100,16 +101,20 @@ static void start_native(void)
 static int start_game(void)
 {
   char sram_path[1200];
+  int mania = settings.widescreen == SCREEN_MANIA;
+  int columns = mania ? MANIA_EXTRA_COLUMNS : settings.widescreen ? WIDE_EXTRA_COLUMNS : 0;
   snprintf(sram_path, sizeof(sram_path), "%shellfire.srm", settings_dir());
-  if (!emu_load(settings.rom_path, sram_path, settings.widescreen ? WIDE_EXTRA_COLUMNS : 0))
+  if (!emu_load(settings.rom_path, sram_path, columns))
   {
     SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "HellFire Saga",
                              "The ROM could not be loaded.", video_window());
     return 0;
   }
   /* Make the game draw its level and sprites across the extra columns. */
-  if (settings.widescreen) widescreen_apply();
+  if (columns) widescreen_apply(columns, mania);
   gamefx_fix_rom();
+  gamefx_set_tall(mania);
+  video_fit_game(320 + columns * 8, mania ? 240 : 224);
   gamefx_reset();
   gamefx_set_invincible(settings.invincible);
   /* After every ROM patch: recompile the code exactly as it will run. */

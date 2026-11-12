@@ -139,6 +139,12 @@ static void sram_write(void)
   fclose(f);
 }
 
+void emu_set_extra_lines(int above, int below)
+{
+  config.v_extra_lines = (uint8_t)above;
+  config.v_extra_below = (uint8_t)below;
+}
+
 int emu_load(const char *rom_path, const char *sram_path, int extra_columns)
 {
   char path[1024];
@@ -194,7 +200,7 @@ int emu_run_frame(int16_t *audio_out)
 const uint32_t *emu_frame(int *width, int *height, int *pitch_bytes)
 {
   *width  = bitmap.viewport.w + 2 * bitmap.viewport.x;
-  *height = bitmap.viewport.h + 2 * bitmap.viewport.y;
+  *height = bitmap.viewport.h + 2 * bitmap.viewport.y + config.v_extra_lines + config.v_extra_below;
   *pitch_bytes = bitmap.pitch;
   return framebuffer;
 }

@@ -19,6 +19,8 @@
 #define RAM_CAM_MAX_X   0xCF54   /* word: camera right limit                */
 #define RAM_CTRL_LOCK   0xE6ED   /* byte: player input ignored (cutscenes)  */
 #define RAM_MISO_SLIDE  0xB646   /* word: Miso logo offset, 0x300 -> 0      */
+#define RAM_CAM_Y       0xCFD0   /* word: camera top                        */
+#define TALL_EXTRA      16       /* 240 lines: 16 more than the game's 224  */
 
 /* ---- bars ----------------------------------------------------------------- */
 
@@ -31,11 +33,15 @@ static int    bars_target;            /* 0 = wide, 1 = bars in   */
 static double bars_pos;               /* 0..1, animated          */
 static int    hide_miso_wrap;
 static int    miso_waiting_seen;      /* the Miso logo has been parked off-screen */
-static int    widen_miso;             /* 0, or the first column to stretch */
+static int    widen_miso;             /* 0, or the first column (of the game's 320) to stretch */
 static int    extend_miso_beam;       /* logo mid-slide: run the beam on */
 static int    had_control;            /* player has moved freely in this level */
 static int    drop_when_black;        /* level loading: bars wait for the fade to black */
 static int    loading_frames;
+static int    tall;                   /* 240-line mode */
+static int    lines_above;            /* extra lines above the game's 224, in the frame being shown */
+static int    next_above;             /* the same, for the frame the game is drawing now */
+static int    cover_extra;            /* not in a level: the extra lines are always hidden */
 
 void gamefx_reset(void)
 {
@@ -49,6 +55,14 @@ void gamefx_reset(void)
   had_control = 0;
   drop_when_black = 0;
   loading_frames = 0;
+  lines_above = next_above = tall ? TALL_EXTRA / 2 : 0;
+  cover_extra = tall;
+  emu_set_extra_lines(next_above, tall ? TALL_EXTRA - next_above : 0);
+}
+
+void gamefx_set_tall(int on)
+{
+  tall = on != 0;
 }
 
 void gamefx_frame(void)
@@ -57,6 +71,24 @@ void gamefx_frame(void)
   int want = 0, now = 0, hold = 0;
 
   if (mode != MODE_LEVEL) had_control = 0;
+
+  if (tall)
+  {
+    /* The game's 224 lines sit in the middle of the 240, except at the
+       very top of a level, where nothing is above the camera: there the
+       picture starts at the level's first line and the rest goes below.
+       The game has already set up the next frame, so this is for that. */
+    int cam_y = (int16_t)emu_read_ram16(RAM_CAM_Y);
+    lines_above = next_above;
+    next_above = TALL_EXTRA / 2;
+    /* (Not in the final boss's arena: it sits at the top of its level and
+       is always shown as the original 320x224, which stays centred.) */
+    if (mode == MODE_LEVEL && cam_y < next_above && emu_read_ram8(RAM_ZONE) != ZONE_FINAL_BOSS)
+      next_above = cam_y < 0 ? 0 : cam_y;
+    emu_set_extra_lines(next_above, TALL_EXTRA - next_above);
+    /* Only levels are drawn past the 224 lines. */
+    cover_extra = mode != MODE_LEVEL && mode != MODE_LOADING;
+  }
   if (mode != MODE_LOADING) { loading_frames = 0; drop_when_black = 0; }
 
   if (mode == MODE_RESET || mode == MODE_INIT)
@@ -128,11 +160,11 @@ void gamefx_frame(void)
     widen_miso = 0;
     if (mode == MODE_SEGA && miso_waiting_seen)
     {
-      if (slide == 0 || slide >= 0x8000) widen_miso = 292;
+      if (slide == 0 || slide >= 0x8000) widen_miso = 252;
       /* While it slides in from the right, stretch only what is right of
          the logo (it sits slide pixels further right). Early on, the logo
          itself fills that edge. */
-      else if (slide < 40) widen_miso = 292 + slide;
+      else if (slide < 40) widen_miso = 252 + slide;
     }
     /* Further out, the logo covers the right edge: only run the dark
        background beam on behind it. */
@@ -162,9 +194,12 @@ static void shade_column(uint32_t *px, int h, int pitch, int x, unsigned keep)
 void gamefx_draw(uint32_t *px, int w, int h, int pitch, double dt)
 {
   int side = (w - 320) / 2, bar, x, y;
+  int top = tall ? lines_above : 0, bottom = tall ? TALL_EXTRA - lines_above : 0;
+  int right = side + 320;           /* first column past the game's 320 */
   double step;
 
-  if (side <= 0) return;
+  if (h < 224 + top + bottom) top = bottom = 0;
+  if (side <= 0 && !top && !bottom) return;
 
   if (hide_miso_wrap)
   {
@@ -176,32 +211,32 @@ void gamefx_draw(uint32_t *px, int w, int h, int pitch, double dt)
     }
   }
 
-  if (extend_miso_beam && w == 400)
+  if (extend_miso_beam && side > 0)
   {
     for (y = 0; y < h; y++)
     {
       uint32_t *row = px + (size_t)y * pitch;
-      uint32_t c = row[359];
+      uint32_t c = row[right - 1];
       int dark = ((c >> 16) & 255) < 0x30 && ((c >> 8) & 255) < 0x30 && (c & 255) < 0x60;
       if (!dark) continue;
-      for (x = 360; x < 400; x++)
+      for (x = right; x < w; x++)
         if ((row[x] & 0xFFFFFF) == 0) row[x] = c;
     }
   }
 
-  if (widen_miso && w == 400)
+  if (widen_miso && side > 0 && w <= 576)
   {
-    /* Stretch the columns right of the logo (beam + curved stripes) up to
-       359 across to 399. The beam is horizontal, so it simply runs on. */
-    enum { SRC1 = 360, DST1 = 400 };
-    int src0 = widen_miso;
+    /* Stretch the columns right of the logo (beam + curved stripes), which
+       end with the game's 320, across to the edge. The beam is horizontal,
+       so it simply runs on. */
+    int src0 = side + widen_miso;
     for (y = 0; y < h; y++)
     {
       uint32_t *row = px + (size_t)y * pitch;
-      uint32_t src[SRC1];
-      memcpy(src, row + src0, (size_t)(SRC1 - src0) * sizeof(uint32_t));
-      for (x = src0; x < DST1; x++)
-        row[x] = src[(x - src0) * (SRC1 - src0) / (DST1 - src0)];
+      uint32_t src[576];
+      memcpy(src, row + src0, (size_t)(right - src0) * sizeof(uint32_t));
+      for (x = src0; x < w; x++)
+        row[x] = src[(x - src0) * (right - src0) / (w - src0)];
     }
   }
 
@@ -209,7 +244,7 @@ void gamefx_draw(uint32_t *px, int w, int h, int pitch, double dt)
   {
     /* Is the 320px game area black yet? */
     int dark = 1;
-    for (y = 0; y < h && dark; y += 4)
+    for (y = top; y < h - bottom && dark; y += 4)
     {
       const uint32_t *row = px + (size_t)y * pitch;
       for (x = side; x < w - side; x += 4)
@@ -223,6 +258,17 @@ void gamefx_draw(uint32_t *px, int w, int h, int pitch, double dt)
   if (step > 0.25) step = 0.25;   /* after a stall, don't jump */
   if (bars_target && bars_pos < 1.0) { bars_pos += step; if (bars_pos > 1.0) bars_pos = 1.0; }
   if (!bars_target && bars_pos > 0.0) { bars_pos -= step; if (bars_pos < 0.0) bars_pos = 0.0; }
+
+  /* 240-line mode: the bars close in from above and below as well, down
+     to the game's own 320x224. */
+  {
+    double e = cover_extra ? 1.0 : ease(bars_pos);
+    int bar_top = (int)(e * top + 0.5), bar_bottom = (int)(e * bottom + 0.5);
+    for (y = 0; y < bar_top; y++)
+      for (x = 0; x < w; x++) px[(size_t)y * pitch + x] = 0xFF000000u;
+    for (y = h - bar_bottom; y < h; y++)
+      for (x = 0; x < w; x++) px[(size_t)y * pitch + x] = 0xFF000000u;
+  }
 
   bar = (int)(ease(bars_pos) * side + 0.5);
   if (bar <= 0) return;

@@ -191,7 +191,159 @@ static size_t build_surface_maps(uint8_t *out)
   return n;
 }
 
-int widescreen_apply(void)
+/*
+ * Tall mode: 240 lines instead of 224
+ * -----------------------------------
+ * The emulator draws 8 more lines above and below the game's 224, so the
+ * view is T .. T+239 with T = camera Y - 8. The planes are only 256 pixels
+ * (16 blocks) tall and the view now touches all 16 rows of blocks, so
+ * there is no spare row left: a row has to be replaced in the very frame
+ * it leaves the top and enters the bottom (or the other way round). The
+ * game draws a new row when the camera crosses a 16-pixel line; these
+ * patches make it test T instead, and draw
+ *   scrolling up:   the row holding T          (was camera - 16)
+ *   scrolling down: the row holding T + 240    (was camera + 224)
+ *   columns and full redraws: 16 blocks from T (was from camera - 16)
+ * At the top of a level T stops at 0 (nothing is above it); the frontend
+ * then shows 0..239 by drawing the 16 extra lines all below.
+ */
+
+/* tall_up ($50): d5 = max(d5 - 8, 0). tall_down ($58): the same + 240. */
+static const uint8_t hook_tall[] = {
+  0x51, 0x45,                         /* $50: subq.w #8,d5     */
+  0x6A, 0x02,                         /*      bpl.s  +2        */
+  0x7A, 0x00,                         /*      moveq  #0,d5     */
+  0x4E, 0x75,                         /*      rts              */
+  0x61, 0xF6,                         /* $58: bsr.s  $50       */
+  0x06, 0x45, 0x00, 0xF0,             /*      addi.w #240,d5   */
+  0x4E, 0x75                          /*      rts              */
+};
+#define HOOK_TALL_UP   0x50u
+#define HOOK_TALL_DOWN 0x58u
+
+/* Which half of a 16-pixel step T is in (bit 4), for the layers' "crossed
+   a block line" tests. Each replaces just the game's "andi.w #$10,dN":
+   the zones' own background routines jump straight to that instruction
+   (jsr $32CA), so nothing before it may change. The hooks live in the
+   reserved 68000 vectors 48-53 ($C0-$D7), within reach of a 4-byte jsr.w. */
+static const uint8_t hook_phase[] = {
+  0x51, 0x41,                         /* $C0: subq.w #8,d1     (background layers: Y in d1) */
+  0x6A, 0x02,                         /*      bpl.s  +2        */
+  0x72, 0x00,                         /*      moveq  #0,d1     */
+  0x02, 0x41, 0x00, 0x10,             /*      andi.w #$10,d1   (original) */
+  0x4E, 0x75,                         /*      rts              */
+  0x51, 0x40,                         /* $CC: subq.w #8,d0     (level: Y in d0) */
+  0x6A, 0x02,                         /*      bpl.s  +2        */
+  0x70, 0x00,                         /*      moveq  #0,d0     */
+  0x02, 0x40, 0x00, 0x10,             /*      andi.w #$10,d0   (original) */
+  0x4E, 0x75                          /*      rts              */
+};
+#define HOOK_PHASE_BG 0xC0u
+#define HOOK_PHASE_FG 0xCCu
+#define TALL_PHASE_FG_SITE 0x3238u    /* andi.w #$10,d0 */
+
+/* Sprites: an object is drawn when it overlaps lines -8..239 (was 0..223),
+   and its pieces are kept down to 40 lines above and 240 below. */
+static const uint8_t hook_sprite_y[] = {
+  0x14, 0x28, 0x00, 0x06,             /* move.b 6(a0),d2       (original) */
+  0xD2, 0x42,                         /* add.w  d2,d1          (original) */
+  0x50, 0x41,                         /* addq.w #8,d1          */
+  0x4E, 0x75                          /* rts                   */
+};
+#define HOOK_SPRITE_Y (HOOK_BASE + 0xA0)
+static const uint32_t tall_sprite_sites[] = { 0x1C68, 0x1D6C };
+static const uint32_t tall_piece_sites[] = { 0x1F26, 0x1F72, 0x1FE2, 0x2056 };
+
+static const uint32_t tall_up_sites[] = {     /* subi.w #$10,d5 */
+  0x272C, 0x2756, 0x277E, 0x27A4, 0x27F6,     /* full redraws */
+  0x294C, 0x2A42, 0x2B04,                     /* rows when scrolling up */
+  0x29C8, 0x2ABE, 0x2B80                      /* right columns */
+};
+static const uint32_t tall_down_sites[] = { 0x2974, 0x2A6A, 0x2B2C };   /* addi.w #$E0,d5 */
+static const uint32_t tall_phase_bg_sites[] = { 0x32CA, 0x335E, 0x33EC };   /* andi.w #$10,d1 */
+
+static int tall_check(void)
+{
+  size_t i;
+  for (i = 0; i < sizeof(tall_up_sites) / sizeof(tall_up_sites[0]); i++)
+    if (!matches(tall_up_sites[i], (const uint8_t[]){ 0x04, 0x45, 0x00, 0x10 }, 4)) return 0;
+  for (i = 0; i < 3; i++)
+    if (!matches(tall_down_sites[i], (const uint8_t[]){ 0x06, 0x45, 0x00, 0xE0 }, 4)) return 0;
+  for (i = 0; i < 3; i++)
+    if (!matches(tall_phase_bg_sites[i], (const uint8_t[]){ 0x02, 0x41, 0x00, 0x10 }, 4)) return 0;
+  for (i = HOOK_PHASE_BG; i < HOOK_PHASE_BG + sizeof(hook_phase); i += 4)   /* vectors 48-53 unused */
+    if (!matches((uint32_t)i, (const uint8_t[]){ 0x00, 0x3A, 0xD1, 0xE2 }, 4)) return 0;
+  for (i = 0; i < 2; i++)
+  {
+    uint32_t a = tall_sprite_sites[i];
+    if (!matches(a, hook_sprite_y, 6)) return 0;
+    if (!matches(a + 14, (const uint8_t[]){ 0x06, 0x42, 0x00, 0xE0 }, 4)) return 0;
+    if (!matches(a + (i ? 24 : 22), (const uint8_t[]){ 0x06, 0x41, 0x00, 0x80 }, 4)) return 0;
+  }
+  for (i = 0; i < 4; i++)
+    if (!matches(tall_piece_sites[i], (const uint8_t[]){ 0x0C, 0x42, 0x00, 0x60 }, 4)
+        || !matches(tall_piece_sites[i] + 6, (const uint8_t[]){ 0x0C, 0x42, 0x01, 0x60 }, 4)) return 0;
+  return matches(TALL_PHASE_FG_SITE, (const uint8_t[]){ 0x02, 0x40, 0x00, 0x10 }, 4);
+}
+
+static void tall_apply(void)
+{
+  size_t i;
+  write(HOOK_TALL_UP, hook_tall, sizeof(hook_tall));
+  write(HOOK_PHASE_BG, hook_phase, sizeof(hook_phase));
+  for (i = 0; i < sizeof(tall_up_sites) / sizeof(tall_up_sites[0]); i++)
+    write(tall_up_sites[i], (const uint8_t[]){ 0x4E, 0xB8, 0x00, HOOK_TALL_UP }, 4);
+  for (i = 0; i < 3; i++)
+    write(tall_down_sites[i], (const uint8_t[]){ 0x4E, 0xB8, 0x00, HOOK_TALL_DOWN }, 4);
+  for (i = 0; i < 3; i++)
+    write(tall_phase_bg_sites[i], (const uint8_t[]){ 0x4E, 0xB8, 0x00, HOOK_PHASE_BG }, 4);
+  write(TALL_PHASE_FG_SITE, (const uint8_t[]){ 0x4E, 0xB8, 0x00, HOOK_PHASE_FG }, 4);
+  write(HOOK_SPRITE_Y, hook_sprite_y, sizeof(hook_sprite_y));
+  for (i = 0; i < 2; i++)
+  {
+    uint32_t a = tall_sprite_sites[i];
+    write(a, (const uint8_t[]){ JSR_L(HOOK_SPRITE_Y) }, 6);
+    write(a + 14, (const uint8_t[]){ 0x06, 0x42, 0x00, 0xF8 }, 4);              /* height: 8 + 224 + 16 */
+    write(a + (i ? 24 : 22), (const uint8_t[]){ 0x06, 0x41, 0x00, 0x78 }, 4);   /* take the 8 off again */
+  }
+  for (i = 0; i < 4; i++)
+  {
+    write(tall_piece_sites[i], (const uint8_t[]){ 0x0C, 0x42, 0x00, 0x58 }, 4);
+    write(tall_piece_sites[i] + 6, (const uint8_t[]){ 0x0C, 0x42, 0x01, 0x70 }, 4);
+  }
+  /* the left-column hook has its own "subi.w #$10,d5": make it a call too */
+  write(HOOK_LEFT_COL + 6, (const uint8_t[]){ 0x4E, 0xB8, 0x00, HOOK_TALL_UP }, 4);
+}
+
+
+/* The sprite patches above are written for a 40px margin (400px wide).
+   For another width these bytes are rewritten: margin = pixels added on
+   each side. */
+static void write16(uint32_t addr, int v)
+{
+  emu_rom_write8(addr, (uint8_t)(v >> 8));
+  emu_rom_write8(addr + 1, (uint8_t)v);
+}
+
+static void set_margin(int m)
+{
+  static const uint32_t shift[]   = { 0x1C4E, 0x1D4E };
+  static const uint32_t right[]   = { 0x1C5A, 0x1D5C };
+  static const uint32_t unshift[] = { 0x1C60, 0x1D64 };
+  static const uint32_t pieces[]  = { 0x1F42, 0x1F9C, 0x200C, 0x2074 };
+  size_t i;
+  (void)shift;
+  write16(HOOK_SPRITE + 4, m);                                   /* addi.w #m,d0 */
+  for (i = 0; i < 2; i++) write16(right[i] + 2, 320 + 2 * m);
+  for (i = 0; i < 2; i++) write16(unshift[i] + 2, 0x80 - m);
+  for (i = 0; i < 4; i++)
+  {
+    write16(pieces[i] + 2, 96 - m);
+    write16(pieces[i] + 8, 448 + m);
+  }
+}
+
+int widescreen_apply(int extra_columns, int tall)
 {
   size_t i, n = sizeof(patches) / sizeof(patches[0]);
 
@@ -202,6 +354,7 @@ int widescreen_apply(void)
     if (emu_rom_read8(HOOK_BASE + (uint32_t)i) != 0xFF) return -1;
   for (i = 0x40; i < 0x60; i += 4)                 /* vectors 16-23 unused */
     if (!matches((uint32_t)i, (const uint8_t[]){ 0x00, 0x3A, 0xD1, 0xCA }, 4)) return -1;
+  if (tall && !tall_check()) return -1;
 
   write(HOOK_LEFT_COL, hook_left_col, sizeof(hook_left_col));
   write(HOOK_SPRITE, hook_sprite, sizeof(hook_sprite));
@@ -213,5 +366,7 @@ int widescreen_apply(void)
     write(SURFACE_MAPS, maps, build_surface_maps(maps));
   }
   for (i = 0; i < n; i++) write(patches[i].addr, patches[i].replace, patches[i].len);
+  set_margin(extra_columns * 4);
+  if (tall) tall_apply();
   return (int)n;
 }

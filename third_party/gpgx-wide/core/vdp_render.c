@@ -42,6 +42,16 @@
 
 #include "shared.h"
 #include "md_ntsc.h"
+
+/* hellfire-saga-pc: lines drawn above line 0 or below the last line
+   (config.v_extra_lines) use the horizontal scroll of the nearest real
+   line, since the game only fills the scroll table for the real ones.
+   The window plane test uses it too. */
+/* extra lines above the picture: where the background plane has nothing
+   above its first line, repeat that line instead of wrapping around */
+#define PLANE_B_LINE(l, ys) (((l) < 0 && (int)((ys) & 0x3FF) + (l) < 0 && ((ys) & 0x3FF) < 16) ? 0 : (l) + (ys))
+#define HSCROLL_LINE(l) ((l) < 0 ? 0 : ((l) >= bitmap.viewport.h ? bitmap.viewport.h - 1 : (l)))
+
 #include "sms_ntsc.h"
 
 extern int8 reset_do_not_clear_buffers;
@@ -1515,7 +1525,7 @@ void render_bg_m5(int line)
   int a, w, start, end;
   /* Common data */
   uint32 shift, index, v_line;
-  uint32 xscroll      = *(uint32 *)&vram[hscb + ((line & hscroll_mask) << 2)];
+  uint32 xscroll      = *(uint32 *)&vram[hscb + ((HSCROLL_LINE(line) & hscroll_mask) << 2)];
   if (
     (render_obj == render_obj_m5) ||
     (render_obj == render_obj_m5_im2) ||
@@ -1538,13 +1548,13 @@ void render_bg_m5(int line)
 
   /* Plane B width */
   start = 0;
-  end   = bitmap.viewport.w >> 4;
+  end   = (bitmap.viewport.w + 15) >> 4;   /* hellfire-saga-pc: widths that aren't a multiple of 16 (424) */
 
   /* Plane B scroll */
 #ifndef MSB_FIRST
   shift  = (xscroll >> 16) & 0x0F;
   index  = pf_col_mask + 1 - ((xscroll >> 20) & pf_col_mask);
-  v_line = (line + (yscroll >> 16)) & pf_row_mask;
+  v_line = PLANE_B_LINE(line, yscroll >> 16) & pf_row_mask;
 #else
   shift  = (xscroll & 0x0F);
   index  = pf_col_mask + 1 - ((xscroll >> 4) & pf_col_mask);
@@ -1577,7 +1587,7 @@ void render_bg_m5(int line)
     DRAW_COLUMN(atbuf, v_line)
   }
 
-  if (w == (line >= a))
+  if (w == (HSCROLL_LINE(line) >= a))
   {
     /* Window takes up entire line */
     a = 0;
@@ -1695,7 +1705,7 @@ void render_bg_m5_vs(int line)
   int a, w, start = 0, end;
   uint32 shift, index;
   /* Common data */
-  uint32 xscroll      = *(uint32 *)&vram[hscb + ((line & hscroll_mask) << 2)];
+  uint32 xscroll      = *(uint32 *)&vram[hscb + ((HSCROLL_LINE(line) & hscroll_mask) << 2)];
   if (
     (render_obj == render_obj_m5) ||
     (render_obj == render_obj_m5_im2) ||
@@ -1783,7 +1793,7 @@ void render_bg_m5_vs(int line)
     DRAW_COLUMN(atbuf, v_line)
   }
 
-  if (w == (line >= a))
+  if (w == (HSCROLL_LINE(line) >= a))
   {
     /* Window takes up entire line */
     a = 0;
@@ -1919,7 +1929,7 @@ void render_bg_m5_vs_enhanced(int line)
   int a, w, start = 0, end;
   uint32 shift, index;
   /* Common data */
-  uint32 xscroll      = *(uint32 *)&vram[hscb + ((line & hscroll_mask) << 2)];
+  uint32 xscroll      = *(uint32 *)&vram[hscb + ((HSCROLL_LINE(line) & hscroll_mask) << 2)];
   if (
     (render_obj == render_obj_m5) ||
     (render_obj == render_obj_m5_im2) ||
@@ -2059,7 +2069,7 @@ void render_bg_m5_vs_enhanced(int line)
 #endif
   }
 
-  if (w == (line >= a))
+  if (w == (HSCROLL_LINE(line) >= a))
   {
     /* Window takes up entire line */
     a = 0;
@@ -2244,7 +2254,7 @@ void render_bg_m5_im2(int line)
   /* Common data */
   int odd = odd_frame;
   uint32 shift, index, v_line;
-  uint32 xscroll      = *(uint32 *)&vram[hscb + ((line & hscroll_mask) << 2)];
+  uint32 xscroll      = *(uint32 *)&vram[hscb + ((HSCROLL_LINE(line) & hscroll_mask) << 2)];
   if (
     (render_obj == render_obj_m5) ||
     (render_obj == render_obj_m5_im2) ||
@@ -2306,7 +2316,7 @@ void render_bg_m5_im2(int line)
     DRAW_COLUMN_IM2(atbuf, v_line)
   }
 
-  if (w == (line >= a))
+  if (w == (HSCROLL_LINE(line) >= a))
   {
     /* Window takes up entire line */
     a = 0;
@@ -2425,7 +2435,7 @@ void render_bg_m5_im2_vs(int line)
   uint32 pf_shift, *vs;
   /* Common data */
   int odd = odd_frame;
-  uint32 xscroll      = *(uint32 *)&vram[hscb + ((line & hscroll_mask) << 2)];
+  uint32 xscroll      = *(uint32 *)&vram[hscb + ((HSCROLL_LINE(line) & hscroll_mask) << 2)];
   if (
     (render_obj == render_obj_m5) ||
     (render_obj == render_obj_m5_im2) ||
@@ -2512,7 +2522,7 @@ void render_bg_m5_im2_vs(int line)
     DRAW_COLUMN_IM2(atbuf, v_line)
   }
 
-  if (w == (line >= a))
+  if (w == (HSCROLL_LINE(line) >= a))
   {
     /* Window takes up entire line */
     a = 0;
@@ -2645,7 +2655,7 @@ void render_bg_m5(int line)
   uint8 *lb;
 
   /* Scroll Planes common data */
-  uint32 xscroll      = *(uint32 *)&vram[hscb + ((line & hscroll_mask) << 2)];
+  uint32 xscroll      = *(uint32 *)&vram[hscb + ((HSCROLL_LINE(line) & hscroll_mask) << 2)];
   if (
     (render_obj == render_obj_m5) ||
     (render_obj == render_obj_m5_im2) ||
@@ -2675,7 +2685,7 @@ void render_bg_m5(int line)
   int w = (reg[18] >> 7) & 1;
 
   /* Test against current line */
-  if (w == (line >= a))
+  if (w == (HSCROLL_LINE(line) >= a))
   {
     /* Window takes up entire line */
     a = 0;
@@ -2820,7 +2830,7 @@ void render_bg_m5_vs(int line)
   uint8 *lb;
 
   /* Scroll Planes common data */
-  uint32 xscroll      = *(uint32 *)&vram[hscb + ((line & hscroll_mask) << 2)];
+  uint32 xscroll      = *(uint32 *)&vram[hscb + ((HSCROLL_LINE(line) & hscroll_mask) << 2)];
   if (
     (render_obj == render_obj_m5) ||
     (render_obj == render_obj_m5_im2) ||
@@ -2851,7 +2861,7 @@ void render_bg_m5_vs(int line)
   int w = (reg[18] >> 7) & 1;
 
   /* Test against current line */
-  if (w == (line >= a))
+  if (w == (HSCROLL_LINE(line) >= a))
   {
     /* Window takes up entire line */
     a = 0;
@@ -3039,7 +3049,7 @@ void render_bg_m5_vs_enhanced(int line)
   int v_offset = 0;
 
   /* Scroll Planes common data */
-  uint32 xscroll      = *(uint32 *)&vram[hscb + ((line & hscroll_mask) << 2)];
+  uint32 xscroll      = *(uint32 *)&vram[hscb + ((HSCROLL_LINE(line) & hscroll_mask) << 2)];
   if (
     (render_obj == render_obj_m5) ||
     (render_obj == render_obj_m5_im2) ||
@@ -3070,7 +3080,7 @@ void render_bg_m5_vs_enhanced(int line)
   int w = (reg[18] >> 7) & 1;
 
   /* Test against current line */
-  if (w == (line >= a))
+  if (w == (HSCROLL_LINE(line) >= a))
   {
     /* Window takes up entire line */
     a = 0;
@@ -3403,7 +3413,7 @@ void render_bg_m5_im2(int line)
 
   /* Scroll Planes common data */
   int odd = odd_frame;
-  uint32 xscroll      = *(uint32 *)&vram[hscb + ((line & hscroll_mask) << 2)];
+  uint32 xscroll      = *(uint32 *)&vram[hscb + ((HSCROLL_LINE(line) & hscroll_mask) << 2)];
   if (
     (render_obj == render_obj_m5) ||
     (render_obj == render_obj_m5_im2) ||
@@ -3433,7 +3443,7 @@ void render_bg_m5_im2(int line)
   int w = (reg[18] >> 7) & 1;
 
   /* Test against current line */
-  if (w == (line >= a))
+  if (w == (HSCROLL_LINE(line) >= a))
   {
     /* Window takes up entire line */
     a = 0;
@@ -3579,7 +3589,7 @@ void render_bg_m5_im2_vs(int line)
 
   /* common data */
   int odd = odd_frame;
-  uint32 xscroll      = *(uint32 *)&vram[hscb + ((line & hscroll_mask) << 2)];
+  uint32 xscroll      = *(uint32 *)&vram[hscb + ((HSCROLL_LINE(line) & hscroll_mask) << 2)];
   if (
     (render_obj == render_obj_m5) ||
     (render_obj == render_obj_m5_im2) ||
@@ -3610,7 +3620,7 @@ void render_bg_m5_im2_vs(int line)
   uint32 w = (reg[18] >> 7) & 1;
 
   /* Test against current line */
-  if (w == (line >= a))
+  if (w == (HSCROLL_LINE(line) >= a))
   {
     /* Window takes up entire line */
     a = 0;
@@ -5043,7 +5053,7 @@ void render_line(int line)
     }
 
     /* Parse sprites for next line */
-    if (line < (bitmap.viewport.h - 1))
+    if (line < (bitmap.viewport.h - 1 + config.v_extra_below))
     {
       parse_satb(line);
     }
@@ -5091,7 +5101,7 @@ void remap_line(int line)
   uint8 *src = &linebuf[0][0x20 - bitmap.viewport.x];
 
   /* Adjust line offset in framebuffer */
-  line = (line + bitmap.viewport.y) % lines_per_frame;
+  line = (line + bitmap.viewport.y + config.v_extra_lines) % lines_per_frame;
 
   /* Take care of Game Gear reduced screen when overscan is disabled */
   if (line < 0) return;

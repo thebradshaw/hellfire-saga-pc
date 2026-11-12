@@ -67,7 +67,9 @@ static double run(const char *rom, int frames, int extra, int use_native, uint32
   /* registers survive a reset on real hardware too: start both runs alike */
   memset(m68k.dar, 0, sizeof(m68k.dar));
   if (!emu_load(rom, NULL, extra)) { fprintf(stderr, "cannot load %s\n", rom); exit(1); }
-  if (extra) widescreen_apply();
+  /* 13 columns = the 424x240 mode: its taller picture comes with its own patches */
+  if (extra) widescreen_apply(extra, extra == 13);
+  gamefx_set_tall(extra == 13);
   gamefx_reset();
   if (use_native)
   {

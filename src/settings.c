@@ -54,7 +54,7 @@ void settings_load(void)
     while (end > val && (end[-1] == '\n' || end[-1] == '\r')) *--end = 0;
 
     if      (!strcmp(line, "rom_path"))   snprintf(settings.rom_path, sizeof(settings.rom_path), "%s", val);
-    else if (!strcmp(line, "widescreen")) settings.widescreen = atoi(val) != 0;
+    else if (!strcmp(line, "widescreen")) { settings.widescreen = atoi(val); if (settings.widescreen < 0 || settings.widescreen >= SCREEN_COUNT) settings.widescreen = SCREEN_WIDE; }
     else if (!strcmp(line, "fullscreen")) settings.fullscreen = atoi(val) != 0;
     else if (!strcmp(line, "vsync"))      settings.vsync      = atoi(val) != 0;
     else if (!strcmp(line, "scale_mode")) settings.scale_mode = atoi(val) ? SCALE_FIT : SCALE_INTEGER;
