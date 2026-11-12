@@ -80,6 +80,24 @@ static const uint8_t hook_left_col[] = {
 #define HOOK_LEFT_COL  (HOOK_BASE + 0x00)
 #define HOOK_ROW_LONG  (HOOK_BASE + 0x20)
 #define SURFACE_MAPS   (HOOK_BASE + 0x100)   /* see build_surface_maps */
+#define HOOK_WRAP_X    (HOOK_BASE + 0xE0)
+
+/* hook_wrap_x: the game's unclipped sprite loops keep only the low 9 bits of
+   a piece's X, so a piece far left of the screen wraps around to the right.
+   At 320 that lands off screen; in a wider picture it shows up in the right
+   margin (stray pieces of objects that are behind the player). Pieces outside
+   the picture get X = 1 instead, which is always off screen. The limits are
+   set by set_margin. */
+static const uint8_t hook_wrap_x[] = {
+  0x0C, 0x42, 0x00, 0x60,             /* cmpi.w #left,d2         */
+  0x6D, 0x0A,                         /* blt.s  off              */
+  0x0C, 0x42, 0x01, 0xC0,             /* cmpi.w #right,d2        */
+  0x6C, 0x04,                         /* bge.s  off              */
+  0x4E, 0x75,                         /* rts                     */
+  0x4E, 0x71,                         /* nop                     */
+  0x74, 0x01,                         /* off: moveq #1,d2        */
+  0x4E, 0x75                          /* rts                     */
+};
 
 /* hook_sprite: object X relative to the camera, shifted right by 40 so the
    "is it on screen" test covers the extra columns. */
@@ -151,6 +169,12 @@ static const Patch patches[] = {
   P(0x2012, L(0x0C, 0x42, 0x01, 0xC0), L(0x0C, 0x42, 0x01, 0xE8), "pieces 3: right"),
   P(0x2074, L(0x0C, 0x42, 0x00, 0x60), L(0x0C, 0x42, 0x00, 0x38), "pieces 4: left"),
   P(0x207A, L(0x0C, 0x42, 0x01, 0xC0), L(0x0C, 0x42, 0x01, 0xE8), "pieces 4: right"),
+
+  /* ---- sprites: unclipped pieces no longer wrap from the left edge to the right ---- */
+  P(0x1E32, L(0x02, 0x42, 0x01, 0xFF, 0x66, 0x02, 0x52, 0x42), L(JSR_L(HOOK_WRAP_X), 0x4E, 0x71), "pieces A: no wrap"),
+  P(0x1E6C, L(0x02, 0x42, 0x01, 0xFF, 0x66, 0x02, 0x52, 0x42), L(JSR_L(HOOK_WRAP_X), 0x4E, 0x71), "pieces B: no wrap"),
+  P(0x1EBC, L(0x02, 0x42, 0x01, 0xFF, 0x66, 0x02, 0x52, 0x42), L(JSR_L(HOOK_WRAP_X), 0x4E, 0x71), "pieces C: no wrap"),
+  P(0x1F04, L(0x02, 0x42, 0x01, 0xFF, 0x66, 0x02, 0x52, 0x42), L(JSR_L(HOOK_WRAP_X), 0x4E, 0x71), "pieces D: no wrap"),
 
   /* ---- water/lava surface (object at 0x144F6): wider sprite strips ---- */
   P(0x144BA, L(0x21, 0x7C, 0x00, 0x01, 0x45, 0x82, 0x00, 0x0C),
@@ -433,6 +457,8 @@ static void set_margin(int m)
   write16(HOOK_SPRITE + 4, m);                                   /* addi.w #m,d0 */
   for (i = 0; i < 2; i++) write16(right[i] + 2, 320 + 2 * m);
   for (i = 0; i < 2; i++) write16(unshift[i] + 2, 0x80 - m);
+  write16(HOOK_WRAP_X + 2, 96 - m);
+  write16(HOOK_WRAP_X + 8, 448 + m);
   for (i = 0; i < 4; i++)
   {
     write16(pieces[i] + 2, 96 - m);
@@ -456,6 +482,7 @@ int widescreen_apply(int extra_columns, int tall)
 
   write(HOOK_LEFT_COL, hook_left_col, sizeof(hook_left_col));
   write(HOOK_SPRITE, hook_sprite, sizeof(hook_sprite));
+  write(HOOK_WRAP_X, hook_wrap_x, sizeof(hook_wrap_x));
   write(HOOK_ROW_LONG, hook_row, sizeof(hook_row));
   write(HOOK_ROW, (const uint8_t[]){ 0x4E, 0xF9, (HOOK_ROW_LONG >> 24) & 0xFF, (HOOK_ROW_LONG >> 16) & 0xFF,
                                      (HOOK_ROW_LONG >> 8) & 0xFF, HOOK_ROW_LONG & 0xFF }, 6);  /* jmp.l */

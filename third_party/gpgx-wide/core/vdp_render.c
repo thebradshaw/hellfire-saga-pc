@@ -600,7 +600,7 @@ typedef struct
   uint16 size;
 } object_info_t;
 
-static object_info_t obj_info[2][MAX_SPRITES_PER_LINE];
+static object_info_t obj_info[2][64];   /* hellfire-saga-pc: wide modes allow viewport.w>>4 sprites per line (26 at 424) */
 
 /* Sprite Counter */
 static uint8 object_count[2];
