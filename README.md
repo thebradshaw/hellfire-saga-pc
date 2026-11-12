@@ -36,7 +36,7 @@ The download buttons always get the latest release; older ones are on the [relea
 ## Features
 
 - Widescreen at **400×224**: 16:9 at the Genesis's native height
-- A **Sonic Mania mode at 424×240**, Mania's own picture size: wider again, and 16 lines taller, with the level drawn past the old top and bottom edges. Pick it under Options → Screen (400×224, Mania 424×240 or the original 320×224)
+- A **Sonic Mania mode at 424×240** (the default), Mania's own picture size: wider again, and 16 lines taller, with the level drawn past the old top and bottom edges and the health meter moved out to the corner. Pick it or the others under Options → Screen (Mania 424×240, 400×224 or the original 320×224)
 - A launcher with art by **SAWhane**
 - Black bars that slide in during boss fights and cutscenes, so those play at the original 320px width (in Mania mode they close in from all four sides, to the original 320×224), then slide back out; they stay on for screens made only 320px wide (title, menus, results, the final boss and the ending)
 - 60 or 120 FPS presentation, with VSync on or off; frame pacing locks to

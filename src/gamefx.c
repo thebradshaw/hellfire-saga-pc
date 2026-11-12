@@ -21,6 +21,8 @@
 #define RAM_MISO_SLIDE  0xB646   /* word: Miso logo offset, 0x300 -> 0      */
 #define RAM_CAM_Y       0xCFD0   /* word: camera top                        */
 #define TALL_EXTRA      16       /* 240 lines: 16 more than the game's 224  */
+#define TALL_MARGIN     52       /* 424 wide: 52 more pixels on each side    */
+#define RAM_HUD_SHIFT   0xDF10   /* word: added to the health meter's X (see widescreen.c) */
 
 /* ---- bars ----------------------------------------------------------------- */
 
@@ -42,6 +44,8 @@ static int    tall;                   /* 240-line mode */
 static int    lines_above;            /* extra lines above the game's 224, in the frame being shown */
 static int    next_above;             /* the same, for the frame the game is drawing now */
 static int    cover_extra;            /* not in a level: the extra lines are always hidden */
+
+static double ease(double t);
 
 void gamefx_reset(void)
 {
@@ -88,6 +92,14 @@ void gamefx_frame(void)
     emu_set_extra_lines(next_above, TALL_EXTRA - next_above);
     /* Only levels are drawn past the 224 lines. */
     cover_extra = mode != MODE_LEVEL && mode != MODE_LOADING;
+    /* The health meter sits at the left edge of the wide picture, and
+       moves back in with the boss bars. */
+    if (mode == MODE_LEVEL || mode == MODE_LOADING)
+    {
+      int shift = -(int)(TALL_MARGIN * (1.0 - ease(bars_pos)) + 0.5);
+      emu_write_ram8(RAM_HUD_SHIFT, (uint8_t)((unsigned)shift >> 8));
+      emu_write_ram8(RAM_HUD_SHIFT + 1, (uint8_t)shift);
+    }
   }
   if (mode != MODE_LOADING) { loading_frames = 0; drop_when_black = 0; }
 

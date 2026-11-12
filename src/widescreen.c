@@ -192,6 +192,20 @@ static size_t build_surface_maps(uint8_t *out)
 }
 
 /*
+ * HUD (tall mode): the health meter's X goes through a hook that adds a
+ * word the frontend sets (RAM $FFDF10, never used by the game), so the
+ * meter can sit at the left edge of the wide picture and move back in
+ * with the boss bars.
+ */
+static const uint8_t hook_hud[] = {
+  0x30, 0x38, 0xEB, 0x06,             /* move.w ($EB06).w,d0   (original: meter X) */
+  0xD0, 0x78, 0xDF, 0x10,             /* add.w  ($DF10).w,d0   */
+  0x59, 0x47,                         /* subq.w #4,d7          (original) */
+  0x4E, 0x75                          /* rts                   */
+};
+#define HOOK_HUD (HOOK_BASE + 0xC0)
+
+/*
  * Tall mode: 240 lines instead of 224
  * -----------------------------------
  * The emulator draws 8 more lines above and below the game's 224, so the
@@ -283,6 +297,7 @@ static int tall_check(void)
   for (i = 0; i < 4; i++)
     if (!matches(tall_piece_sites[i], (const uint8_t[]){ 0x0C, 0x42, 0x00, 0x60 }, 4)
         || !matches(tall_piece_sites[i] + 6, (const uint8_t[]){ 0x0C, 0x42, 0x01, 0x60 }, 4)) return 0;
+  if (!matches(0x1B88, hook_hud, 4) || !matches(0x1B8C, hook_hud + 8, 2)) return 0;
   return matches(TALL_PHASE_FG_SITE, (const uint8_t[]){ 0x02, 0x40, 0x00, 0x10 }, 4);
 }
 
@@ -311,10 +326,92 @@ static void tall_apply(void)
     write(tall_piece_sites[i], (const uint8_t[]){ 0x0C, 0x42, 0x00, 0x58 }, 4);
     write(tall_piece_sites[i] + 6, (const uint8_t[]){ 0x0C, 0x42, 0x01, 0x70 }, 4);
   }
+  write(HOOK_HUD, hook_hud, sizeof(hook_hud));
+  write(0x1B88, (const uint8_t[]){ JSR_L(HOOK_HUD) }, 6);
+  emu_write_ram8(0xDF10, 0);
+  emu_write_ram8(0xDF11, 0);
   /* the left-column hook has its own "subi.w #$10,d5": make it a call too */
   write(HOOK_LEFT_COL + 6, (const uint8_t[]){ 0x4E, 0xB8, 0x00, HOOK_TALL_UP }, 4);
 }
 
+
+/*
+ * Edges: things the game only keeps for its own 320x224 screen.
+ *  - Rings: the ring manager holds the rings from 8px left of the camera
+ *    to 328px right of it, so rings popped in and out inside the wider
+ *    picture. Its window grows by the margin on each side.
+ *  - Objects: a routine at 0x564E ("is it on screen?") is used by
+ *    projectiles, debris and some enemies to delete themselves once they
+ *    leave 320x224, so they vanished while still in view. It now tests
+ *    the whole picture.
+ *  - Tall mode: rings are drawn for 8 more lines above and below, and the
+ *    on-screen test covers the extra lines.
+ * The hooks live in the reserved 68000 vectors 54-63 ($D8-$FF).
+ */
+#define HOOK_RING_X     0xD8u   /* move.w ($CFCC).w,d4; subi.w #8+m,d4; rts */
+#define HOOK_ONSCREEN_X 0xE2u   /* sub.w ($CFCC).w,d0; addi.w #m,d0; rts    */
+#define HOOK_ONSCREEN_Y 0xECu   /* sub.w ($CFD0).w,d1; addq.w #8,d1; rts    */
+#define HOOK_RING_Y     0xF4u   /* move.w 4(a3),d4; subq.w #8,d4; rts       */
+static const uint32_t ring_window_sites[] = { 0x2484, 0x24BC };   /* move.w ($CFCC).w,d4; subq.w #8,d4 */
+static const uint32_t ring_width_sites[]  = { 0x24A0, 0x24E8 };   /* addi.w #$150,d4 */
+
+static int edges_check(void)
+{
+  size_t i;
+  for (i = HOOK_RING_X; i < 0x100; i += 4)                         /* vectors 54-63 unused */
+    if (!matches((uint32_t)i, (const uint8_t[]){ 0x00, 0x3A, 0xD1, 0xE2 }, 4)) return 0;
+  for (i = 0; i < 2; i++)
+    if (!matches(ring_window_sites[i], (const uint8_t[]){ 0x38, 0x38, 0xCF, 0xCC, 0x51, 0x44 }, 6)
+        || !matches(ring_width_sites[i], (const uint8_t[]){ 0x06, 0x44, 0x01, 0x50 }, 4)) return 0;
+  return matches(0x2636, (const uint8_t[]){ 0x38, 0x2B, 0x00, 0x04, 0x3A, 0x3C, 0x00, 0xF0 }, 8)
+      && matches(0x2654, (const uint8_t[]){ 0x06, 0x41, 0x00, 0x78 }, 4)
+      && matches(0x5652, (const uint8_t[]){ 0x90, 0x78, 0xCF, 0xCC, 0x6B, 0x1A, 0x0C, 0x40, 0x01, 0x40 }, 10)
+      && matches(0x5662, (const uint8_t[]){ 0x92, 0x78, 0xCF, 0xD0, 0x6B, 0x0A, 0x0C, 0x41, 0x00, 0xE0 }, 10);
+}
+
+static void edges_apply(int m, int tall)
+{
+  size_t i;
+  write(HOOK_RING_X, (const uint8_t[]){ 0x38, 0x38, 0xCF, 0xCC, 0x04, 0x44, (uint8_t)((8 + m) >> 8), (uint8_t)(8 + m), 0x4E, 0x75 }, 10);
+  write(HOOK_ONSCREEN_X, (const uint8_t[]){ 0x90, 0x78, 0xCF, 0xCC, 0x06, 0x40, (uint8_t)(m >> 8), (uint8_t)m, 0x4E, 0x75 }, 10);
+  for (i = 0; i < 2; i++)
+  {
+    /* the flags of the subtraction still decide the "bhi" that follows */
+    write(ring_window_sites[i], (const uint8_t[]){ 0x4E, 0xB8, 0x00, HOOK_RING_X, 0x4E, 0x71 }, 6);
+    write(ring_width_sites[i] + 2, (const uint8_t[]){ (uint8_t)((0x150 + 2 * m) >> 8), (uint8_t)(0x150 + 2 * m) }, 2);
+  }
+  write(0x5652, (const uint8_t[]){ 0x4E, 0xB8, 0x00, HOOK_ONSCREEN_X }, 4);
+  write(0x5658 + 2, (const uint8_t[]){ (uint8_t)((320 + 2 * m) >> 8), (uint8_t)(320 + 2 * m) }, 2);
+  if (!tall) return;
+  write(HOOK_ONSCREEN_Y, (const uint8_t[]){ 0x92, 0x78, 0xCF, 0xD0, 0x50, 0x41, 0x4E, 0x75 }, 8);
+  write(HOOK_RING_Y, (const uint8_t[]){ 0x38, 0x2B, 0x00, 0x04, 0x51, 0x44, 0x4E, 0x75 }, 8);
+  write(0x5662, (const uint8_t[]){ 0x4E, 0xB8, 0x00, HOOK_ONSCREEN_Y }, 4);
+  write(0x5668 + 2, (const uint8_t[]){ 0x00, 0xF8 }, 2);           /* -8 .. 240 */
+  write(0x2636, (const uint8_t[]){ 0x4E, 0xB8, 0x00, HOOK_RING_Y }, 4);
+  write(0x263A + 2, (const uint8_t[]){ 0x01, 0x10 }, 2);           /* rings from 16 above to 256 below the camera */
+  write(0x2654 + 2, (const uint8_t[]){ 0x00, 0x70 }, 2);           /* and their sprite Y follows the 8 */
+}
+
+
+/*
+ * Wider than 400: the newest left column is drawn 16px further out (80px
+ * left of the camera, 12px past the picture's edge), so the rows and full
+ * redraws start there too and are one block longer.
+ */
+static void far_left(void)
+{
+  static const uint32_t refresh_count[] = { 0x2720, 0x274A, 0x27EA };
+  static const uint32_t refresh_start[] = { 0x2728, 0x2752, 0x27F2 };
+  size_t i;
+  emu_rom_write8(HOOK_LEFT_COL + 5, 0x40);                         /* subi.w #$40,d4 */
+  emu_rom_write8(HOOK_ROW_LONG + 7, 0x1D);                         /* moveq  #$1D,d6 */
+  emu_rom_write8(HOOK_ROW_LONG + 11, 0x50);                        /* subi.w #$50,d4 */
+  for (i = 0; i < 3; i++)
+  {
+    emu_rom_write8(refresh_count[i] + 1, 0x1D);
+    emu_rom_write8(refresh_start[i] + 3, 0x50);
+  }
+}
 
 /* The sprite patches above are written for a 40px margin (400px wide).
    For another width these bytes are rewritten: margin = pixels added on
@@ -355,6 +452,7 @@ int widescreen_apply(int extra_columns, int tall)
   for (i = 0x40; i < 0x60; i += 4)                 /* vectors 16-23 unused */
     if (!matches((uint32_t)i, (const uint8_t[]){ 0x00, 0x3A, 0xD1, 0xCA }, 4)) return -1;
   if (tall && !tall_check()) return -1;
+  if (!edges_check()) return -1;
 
   write(HOOK_LEFT_COL, hook_left_col, sizeof(hook_left_col));
   write(HOOK_SPRITE, hook_sprite, sizeof(hook_sprite));
@@ -367,6 +465,8 @@ int widescreen_apply(int extra_columns, int tall)
   }
   for (i = 0; i < n; i++) write(patches[i].addr, patches[i].replace, patches[i].len);
   set_margin(extra_columns * 4);
+  if (extra_columns > 10) far_left();
+  edges_apply(extra_columns * 4, tall);
   if (tall) tall_apply();
   return (int)n;
 }

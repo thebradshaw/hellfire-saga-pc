@@ -23,12 +23,14 @@ static int create_renderer(int vsync)
 
 int video_open(const char *title, int fullscreen, int vsync)
 {
+  int mania = settings.widescreen == SCREEN_MANIA;
   if (SDL_InitSubSystem(SDL_INIT_VIDEO) < 0) return 0;
   SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "0");   /* nearest neighbour */
 
-  /* 3x of 400x224 fits a 1366x768 laptop screen. */
+  /* 3x of the game picture: 1272x720 for 424x240 (the default), 1200x672
+     for 400x224. Both fit a 1366x768 laptop screen. */
   window = SDL_CreateWindow(title, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-                            1200, 672, SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
+                            mania ? 1272 : 1200, mania ? 720 : 672, SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
   if (!window) return 0;
   SDL_SetWindowMinimumSize(window, 400, 224);
   if (!create_renderer(vsync)) return 0;

@@ -23,7 +23,7 @@ const char *settings_dir(void)
 static void defaults(void)
 {
   memset(&settings, 0, sizeof(settings));
-  settings.widescreen = 1;
+  settings.widescreen = SCREEN_MANIA;
   settings.fullscreen = 0;
   settings.vsync      = 1;
   settings.scale_mode = SCALE_INTEGER;
