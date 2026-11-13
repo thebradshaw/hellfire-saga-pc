@@ -9,7 +9,7 @@
 </p>
 <p align="center"><a href="https://github.com/thebradshaw/hellfire-saga-pc/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/thebradshaw/hellfire-saga-pc?label=latest%20release&style=flat-square"></a></p>
 
-<p align="center"><img alt="Forest of Decay in 400x224 widescreen" src="docs/screenshots/gameplay-widescreen.png" width="820"></p>
+<p align="center"><img alt="Forest of Decay in Sonic Mania mode, 424x240" src="docs/screenshots/gameplay-widescreen.png" width="820"></p>
 
 **To play:** download, unzip, run `hellfire` (`hellfire.exe` on Windows), drag your ROM onto the window and press **Play**.
 
@@ -27,7 +27,7 @@ The download buttons always get the latest release; older ones are on the [relea
 | ![The launcher, with art by SAWhane](docs/screenshots/launcher.png) | ![The title screen](docs/screenshots/title.png) |
 | The launcher, with art by SAWhane | The title screen |
 
-![Widescreen in Forest of Decay](docs/screenshots/forest-of-decay.png)
+![Sonic Mania mode in Forest of Decay](docs/screenshots/forest-of-decay.png)
 
 ![Mania mode, 424x240, in Malicious Glance](docs/screenshots/mania-mode.png)
 
