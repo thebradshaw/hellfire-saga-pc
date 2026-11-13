@@ -379,6 +379,12 @@ static void tall_apply(void)
 static const uint32_t ring_window_sites[] = { 0x2484, 0x24BC };   /* move.w ($CFCC).w,d4; subq.w #8,d4 */
 static const uint32_t ring_width_sites[]  = { 0x24A0, 0x24E8 };   /* addi.w #$150,d4 */
 
+/* Rain (Forest of Decay act 2): drops are screen-space sprites that fall
+   down-left and are dropped once their VDP X is under $70 (16px left of the
+   original picture) or their Y reaches $160 (its bottom). */
+#define RAIN_LEFT   0xBB06u   /* cmpi.w #$70,2(a0)  */
+#define RAIN_BOTTOM 0xBB0Eu   /* cmpi.w #$160,4(a0) */
+
 static int edges_check(void)
 {
   size_t i;
@@ -390,7 +396,9 @@ static int edges_check(void)
   return matches(0x2636, (const uint8_t[]){ 0x38, 0x2B, 0x00, 0x04, 0x3A, 0x3C, 0x00, 0xF0 }, 8)
       && matches(0x2654, (const uint8_t[]){ 0x06, 0x41, 0x00, 0x78 }, 4)
       && matches(0x5652, (const uint8_t[]){ 0x90, 0x78, 0xCF, 0xCC, 0x6B, 0x1A, 0x0C, 0x40, 0x01, 0x40 }, 10)
-      && matches(0x5662, (const uint8_t[]){ 0x92, 0x78, 0xCF, 0xD0, 0x6B, 0x0A, 0x0C, 0x41, 0x00, 0xE0 }, 10);
+      && matches(0x5662, (const uint8_t[]){ 0x92, 0x78, 0xCF, 0xD0, 0x6B, 0x0A, 0x0C, 0x41, 0x00, 0xE0 }, 10)
+      && matches(RAIN_LEFT, (const uint8_t[]){ 0x0C, 0x68, 0x00, 0x70, 0x00, 0x02 }, 6)
+      && matches(RAIN_BOTTOM, (const uint8_t[]){ 0x0C, 0x68, 0x01, 0x60, 0x00, 0x04 }, 6);
 }
 
 static void edges_apply(int m, int tall)
@@ -406,7 +414,9 @@ static void edges_apply(int m, int tall)
   }
   write(0x5652, (const uint8_t[]){ 0x4E, 0xB8, 0x00, HOOK_ONSCREEN_X }, 4);
   write(0x5658 + 2, (const uint8_t[]){ (uint8_t)((320 + 2 * m) >> 8), (uint8_t)(320 + 2 * m) }, 2);
+  write(RAIN_LEFT + 2, (const uint8_t[]){ (uint8_t)((0x70 - m) >> 8), (uint8_t)(0x70 - m) }, 2);   /* rain reaches the left edge */
   if (!tall) return;
+  write(RAIN_BOTTOM + 2, (const uint8_t[]){ 0x01, 0x68 }, 2);       /* and the 8 extra lines at the bottom */
   write(HOOK_ONSCREEN_Y, (const uint8_t[]){ 0x92, 0x78, 0xCF, 0xD0, 0x50, 0x41, 0x4E, 0x75 }, 8);
   write(HOOK_RING_Y, (const uint8_t[]){ 0x38, 0x2B, 0x00, 0x04, 0x51, 0x44, 0x4E, 0x75 }, 8);
   write(0x5662, (const uint8_t[]){ 0x4E, 0xB8, 0x00, HOOK_ONSCREEN_Y }, 4);
