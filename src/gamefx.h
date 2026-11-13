@@ -19,6 +19,8 @@
 #include <stdint.h>
 
 /* Call after loading or resetting the game. */
+/* 240-line mode (424x240): call before gamefx_reset. */
+void gamefx_set_tall(int on);
 void gamefx_reset(void);
 
 /* Call after every emulated game frame: reads game state. */

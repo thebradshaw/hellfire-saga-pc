@@ -117,7 +117,8 @@ static void option_value(int i, char *buf, size_t n)
 {
   switch (i)
   {
-    case 0: snprintf(buf, n, "%s", settings.widescreen ? "Wide 400x224" : "Original 320x224"); break;
+    case 0: snprintf(buf, n, "%s", settings.widescreen == SCREEN_MANIA ? "Mania 424x240" :
+                                   settings.widescreen == SCREEN_WIDE ? "Wide 400x224" : "Original 320x224"); break;
     case 1: snprintf(buf, n, "%s", settings.fullscreen ? "Fullscreen" : "Window"); break;
     case 2: snprintf(buf, n, "%s", settings.scale_mode == SCALE_INTEGER ? "Pixel perfect" : "Fill screen"); break;
     case 3: snprintf(buf, n, "%s", settings.crt == CRT_FULL ? "CRT (scanlines + RGB mask)" :
@@ -136,7 +137,7 @@ static LauncherResult change_option(int i, int dir)
 {
   switch (i)
   {
-    case 0: settings.widescreen = !settings.widescreen; break;
+    case 0: settings.widescreen = (settings.widescreen + dir + SCREEN_COUNT) % SCREEN_COUNT; break;
     case 1: settings.fullscreen = !settings.fullscreen; settings_save(); return LAUNCH_VIDEO_CHANGED;
     case 2: settings.scale_mode = !settings.scale_mode; break;
     case 3: settings.crt = (settings.crt + dir + CRT_COUNT) % CRT_COUNT; break;

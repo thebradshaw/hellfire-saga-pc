@@ -30,6 +30,11 @@ enum {
 /* Loads the ROM file and powers on the console. Returns 1 on success. */
 int emu_load(const char *rom_path, const char *sram_path, int extra_columns);
 
+/* Draws more lines above and below the 224-line picture (8 and 8 = 240
+   lines tall), showing more of the level. The game's timing doesn't change.
+   Call after emu_load; the split can change from frame to frame. */
+void emu_set_extra_lines(int above, int below);
+
 /* Writes battery save data (if the game uses any) and frees the core. */
 void emu_unload(void);
 

@@ -63,7 +63,9 @@ int main(int argc, char **argv)
     fprintf(stderr, "failed to load %s\n", argv[1]);
     return 1;
   }
-  if (extra > 0) printf("widescreen patches: %d\n", widescreen_apply());
+  /* 13 columns = the 424x240 mode: its taller picture comes with its own patches */
+  if (extra > 0) printf("widescreen patches: %d\n", widescreen_apply(extra, extra == 13));
+  if (extra == 13) emu_set_extra_lines(8, 8);
 
   for (i = 0; i < boot; i++)
   {

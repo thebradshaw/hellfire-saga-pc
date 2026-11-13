@@ -8,10 +8,12 @@
 typedef enum { SCALE_INTEGER = 0, SCALE_FIT = 1 } ScaleMode;
 typedef enum { CRT_OFF = 0, CRT_SCANLINES = 1, CRT_FULL = 2, CRT_COUNT } CrtMode;
 
+enum { SCREEN_ORIGINAL, SCREEN_WIDE, SCREEN_MANIA, SCREEN_COUNT };
+
 typedef struct
 {
   char rom_path[1024];
-  int  widescreen;   /* 1 = 400x224, 0 = original 320x224 */
+  int  widescreen;   /* SCREEN_*: 0 = original 320x224, 1 = 400x224, 2 = 424x240 */
   int  fullscreen;
   int  vsync;
   int  scale_mode;   /* ScaleMode */

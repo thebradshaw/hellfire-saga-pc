@@ -23,12 +23,14 @@ static int create_renderer(int vsync)
 
 int video_open(const char *title, int fullscreen, int vsync)
 {
+  int mania = settings.widescreen == SCREEN_MANIA;
   if (SDL_InitSubSystem(SDL_INIT_VIDEO) < 0) return 0;
   SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "0");   /* nearest neighbour */
 
-  /* 3x of 400x224 fits a 1366x768 laptop screen. */
+  /* 3x of the game picture: 1272x720 for 424x240 (the default), 1200x672
+     for 400x224. Both fit a 1366x768 laptop screen. */
   window = SDL_CreateWindow(title, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-                            1200, 672, SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
+                            mania ? 1272 : 1200, mania ? 720 : 672, SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
   if (!window) return 0;
   SDL_SetWindowMinimumSize(window, 400, 224);
   if (!create_renderer(vsync)) return 0;
@@ -59,6 +61,23 @@ void video_set_vsync(int on)
   if (SDL_RenderSetVSync(renderer, on) == 0) { vsync_on = on; return; }
 #endif
   create_renderer(on);
+}
+
+void video_fit_game(int w, int h)
+{
+  /* The window opens at 1200x672, 3x of 400x224. The 424x240 picture needs
+     1272x720 for 3x; move between the two only while the window still has
+     one of these sizes, so a size the player chose is left alone. */
+  int want_w = h > 224 ? w * 3 : 1200, want_h = h > 224 ? h * 3 : 672, cur_w, cur_h;
+  Uint32 flags;
+  if (!window) return;
+  flags = SDL_GetWindowFlags(window);
+  if (flags & (SDL_WINDOW_FULLSCREEN | SDL_WINDOW_FULLSCREEN_DESKTOP | SDL_WINDOW_MAXIMIZED)) return;
+  SDL_GetWindowSize(window, &cur_w, &cur_h);
+  if (cur_w == want_w && cur_h == want_h) return;
+  if (!((cur_w == 1200 && cur_h == 672) || (cur_w == 1272 && cur_h == 720))) return;
+  SDL_SetWindowSize(window, want_w, want_h);
+  SDL_SetWindowPosition(window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
 }
 
 int video_refresh_rate(void)

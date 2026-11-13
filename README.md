@@ -29,13 +29,16 @@ The download buttons always get the latest release; older ones are on the [relea
 
 ![Widescreen in Forest of Decay](docs/screenshots/forest-of-decay.png)
 
+![Mania mode, 424x240, in Malicious Glance](docs/screenshots/mania-mode.png)
+
 <p align="center"><a href="https://buymeacoffee.com/chrisbradshaw"><img alt="Buy me a coffee" src="docs/coffee.svg" width="400"></a></p>
 
 ## Features
 
 - Widescreen at **400×224**: 16:9 at the Genesis's native height
+- A **Sonic Mania mode at 424×240** (the default), Mania's own picture size: wider again, and 16 lines taller, with the level drawn past the old top and bottom edges and the health meter moved out to the corner. Pick it or the others under Options → Screen (Mania 424×240, 400×224 or the original 320×224)
 - A launcher with art by **SAWhane**
-- Black bars that slide in during boss fights and cutscenes, so those play at the original 320px width, then slide back out; they stay on for screens made only 320px wide (title, menus, results, the final boss and the ending)
+- Black bars that slide in during boss fights and cutscenes, so those play at the original 320px width (in Mania mode they close in from all four sides, to the original 320×224), then slide back out; they stay on for screens made only 320px wide (title, menus, results, the final boss and the ending)
 - 60 or 120 FPS presentation, with VSync on or off; frame pacing locks to
   the display's measured refresh rate for smooth motion
 - CRT effect: scanlines, or scanlines plus an RGB mask
@@ -96,6 +99,7 @@ GitHub Actions builds both on every pull request. Download them from the run's *
 
 ```sh
 ./build/hellfire_smoketest HellfireSaga.gen out 2400 10   # 10 extra columns = 400px
+./build/hellfire_smoketest HellfireSaga.gen out 2400 13   # 13 extra columns = Mania mode, 424x240
 ```
 
 **Recompiler checks:**
@@ -121,7 +125,7 @@ src/video.c       one SDL texture, pixel-perfect or fit scaling
 src/audio.c       short SDL audio queue with drift correction (low latency)
 src/controls.c    keyboard + SDL game controllers
 src/romcheck.c    SHA-1 check of the player's ROM
-src/widescreen.c  in-memory patches so the game draws level + sprites 400px wide
+src/widescreen.c  in-memory patches so the game draws level + sprites 400px wide (or 424x240)
 src/gamefx.c      boss/cutscene bars, SEGA screen fix, game bug fixes, invincibility
 src/soundtrack.c  soundtrack player (boots the ROM, freezes it, runs its sound driver)
 src/emu.c         the only file that talks to the hardware core
@@ -170,6 +174,7 @@ the Windows build.
 - **Playable base**: launcher, ROM check, 400×224, Windows and Linux builds.
 - **Native code**: the ROM's 68000 code is recompiled to C on your PC and replaces the emulated CPU, checked frame by frame against the emulated build.
 - **Widescreen**: the level and sprites fill 400px (`src/widescreen.c`).
+- **Mania mode**: 424×240, on a toggle with 400×224 and the original 320×224.
 - **Boss black bars** (`src/gamefx.c`): bosses are detected when the game pins the camera (the final boss by its zone), and cutscenes when it takes control away from the player.
 - **Soundtrack**: every track from your ROM, played in the launcher.
 

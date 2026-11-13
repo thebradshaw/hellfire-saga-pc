@@ -13,8 +13,10 @@
 #ifndef HF_WIDESCREEN_H
 #define HF_WIDESCREEN_H
 
-/* Applies the patches. Returns the number applied, or -1 if the ROM didn't
+/* Applies the patches for a screen 320 + extra_columns*8 pixels wide
+   (10 = 400, 13 = 424). With tall set, also for a screen 240 lines high
+   (see emu_set_extra_lines). Returns the number applied, or -1 if the ROM didn't
    contain the expected code (nothing is changed in that case). */
-int widescreen_apply(void);
+int widescreen_apply(int extra_columns, int tall);
 
 #endif

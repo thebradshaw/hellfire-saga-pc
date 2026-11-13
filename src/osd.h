@@ -85,6 +85,8 @@ typedef struct
   uint8_t left_border;
   uint8_t h40_extra_columns;        /* 10 extra 8px columns = 400px wide */
   uint8_t h40_extra_columns_alpha;
+  uint8_t v_extra_lines;            /* lines drawn above the 224 */
+  uint8_t v_extra_below;            /* lines drawn below them */
   uint8_t vdp_fix_dma_boundary_bug;
   uint8_t render;
   t_input_config input[MAX_INPUTS];
