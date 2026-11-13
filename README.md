@@ -31,8 +31,6 @@ The download buttons always get the latest release; older ones are on the [relea
 
 ![Mania mode, 424x240, in Malicious Glance](docs/screenshots/mania-mode.png)
 
-![Mania mode, 424x240, in Malicious Glance](docs/screenshots/mania-mode.png)
-
 <p align="center"><a href="https://buymeacoffee.com/chrisbradshaw"><img alt="Buy me a coffee" src="docs/coffee.svg" width="400"></a></p>
 
 ## Features
