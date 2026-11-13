@@ -31,6 +31,13 @@ The download buttons always get the latest release; older ones are on the [relea
 
 ![Mania mode, 424x240, in Malicious Glance](docs/screenshots/mania-mode.png)
 
+| | | |
+|---|---|---|
+| ![The Forest of Decay boss](docs/screenshots/boss-forest.png) | ![Death](docs/screenshots/boss-death.png) | ![Shaft](docs/screenshots/boss-shaft.png) |
+| The Forest of Decay boss | Death | Shaft |
+
+Bosses and cutscenes close in to the original 320×224 picture, as the game was built for it.
+
 <p align="center"><a href="https://buymeacoffee.com/chrisbradshaw"><img alt="Buy me a coffee" src="docs/coffee.svg" width="400"></a></p>
 
 ## Features
