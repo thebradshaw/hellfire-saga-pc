@@ -33,8 +33,8 @@ The download buttons always get the latest release; older ones are on the [relea
 
 | | | |
 |---|---|---|
-| ![The Forest of Decay boss](docs/screenshots/boss-forest.png) | ![Death](docs/screenshots/boss-death.png) | ![Metal Sonic](docs/screenshots/boss-metal.png) |
-| The Forest of Decay boss | Death | Metal Sonic |
+| ![The Forest of Decay boss](docs/screenshots/boss-forest.png) | ![Death](docs/screenshots/boss-death.png) | ![Shaft](docs/screenshots/boss-shaft.png) |
+| The Forest of Decay boss | Death | Shaft |
 
 Bosses and cutscenes close in to the original 320×224 picture, as the game was built for it.
 
